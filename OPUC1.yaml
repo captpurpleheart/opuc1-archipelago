@@ -1,0 +1,179 @@
+# One Piece Unlimited Cruise 1 - player YAML
+# Change the values after each option name. Every option is set to its default.
+
+name: Player{number}
+game: One Piece Unlimited Cruise 1
+description: One Piece Unlimited Cruise 1 (Island 1)
+
+One Piece Unlimited Cruise 1:
+  # ---- General -----------------------------------------------------
+  # Starting Character: The Straw Hat you start with. The others are items. "random" picks one.
+  # Options: luffy, zoro, usopp, sanji, nami, chopper, robin, franky, brook
+  starting_character: luffy
+
+  # ---- Item Settings -----------------------------------------------
+  # Combine Fishing Rod and Line Levels: No Rod Line items: each Rod Level item also raises the line
+  # level by the same step (with 6 items of each, one Rod Level item = +5 rod and +5 line). Off: Rod
+  # Level and Rod Line items are separate.
+  # true / false
+  combine_rod_and_line: false
+
+  # Rod Upgrade Items: How many Rod Level and Rod Line upgrade items there are (of each). 30: every item
+  # is one level. 6: every item is five levels. 4: Rod: Fishing Rod max -> Whopper -> Sea King -> MAX.
+  # Line: levels 8, 16, 23, 30.
+  # Options: 4, 6, 30
+  rod_upgrade_items: 30
+
+  # Treasure Maps Need Every Fragment: A treasure map's fragments are only given once every fragment of
+  # that map has been received, so its chest can't be dug up until the whole map is found (vanilla: any
+  # one fragment is enough).
+  # true / false
+  treasure_maps_need_every_fragment: false
+
+  # Disable Diminishing Returns for Food: Feeding a Straw Hat the same food again always gives its full
+  # stat gain (vanilla: the gain drops each time until it stops).
+  # true / false
+  disable_food_diminishing_returns: false
+
+  # Crafting Recipes Are Discovered Through Arts: Development / Cooking / Compounding recipes only show
+  # in their menu once the Art level needed to craft them has been received (rows need Art 0-3). Off:
+  # every recipe is shown from the start. Purely visual: a recipe can't be crafted before its Art level
+  # either way.
+  # true / false
+  recipes_discovered_through_arts: true
+
+  # Crafting Recipes Spoil Locations: Recipe descriptions say which item (and whose) the recipe's
+  # location holds. Off: they only say it holds an unclaimed Archipelago location.
+  # true / false
+  recipes_spoil_locations: true
+
+  # ---- Moves -------------------------------------------------------
+  # Move EXP Multiplier: Moves gain levels faster: 2X or 3X move EXP (every per-level requirement
+  # divided by 2 or 3).
+  # Options: off, 2x, 3x
+  move_exp_multiplier: off
+
+  # Move Locations Are Important: Move level-up locations can hold progression items. Off: they only get
+  # useful items, filler or traps.
+  # true / false
+  move_locations_important: true
+
+  # Super Move Locations Are Important: Super move level-up locations can hold progression items. Off:
+  # useful items, filler or traps only. Has no effect when Move Locations Are Important is off.
+  # true / false
+  super_move_locations_important: false
+
+  # Important Move Levels Up To: The highest move level whose level-up location can hold progression
+  # items. 2: only Level 2 locations; 5: every level.
+  # Range: 2-5
+  move_importance_max_level: 5
+
+  # ---- Fishing & Bug-Catching --------------------------------------
+  # Fishsanity: Catching each fish for the first time is a location. on: the locations can hold
+  # anything. unimportant: only useful items, filler or traps.
+  # Options: off, on, unimportant
+  fishsanity: on
+
+  # Creaturesanity: Catching each creature for the first time (Bug-Catcher Net) is a location. on: the
+  # locations can hold anything. unimportant: only useful items, filler or traps.
+  # Options: off, on, unimportant
+  creaturesanity: on
+
+  # How Many Fish Locations: How many fish locations there are, picked at random from the fish catchable
+  # in this world.
+  # Range: 1-10
+  fish_locations: 10
+
+  # How Many Creature Locations: How many creature locations there are, picked at random from the
+  # creatures catchable in this world.
+  # Range: 1-5
+  creature_locations: 5
+
+  # Sea Kings Are Important: Catching the Sea Kings (and crafting recipes that need Sea King catches or
+  # materials) can hold progression items. Off: those locations only get useful items, filler or traps.
+  # true / false
+  sea_kings_important: false
+
+  # ---- Thousand Sunny & Crew Gating Options ------------------------
+  # Usopp's Workshop Unlock Condition: What opens Usopp's Workshop (crafting). vanilla: open from the
+  # start, no item. own_item: the "Usopp's Workshop" item. usopp: having Usopp in the crew, no item.
+  # own_item_and_usopp: the item and Usopp.
+  # Options: vanilla, own_item, usopp, own_item_and_usopp
+  workshop_unlock: own_item
+
+  # Usopp Is Required for Art of Development: Art of Development levels are only given once Usopp has
+  # joined the crew (received items wait until then).
+  # true / false
+  usopp_required_for_art: false
+
+  # Sanji's Kitchen Unlock Condition: What opens Sanji's Kitchen (cooking). vanilla: opens after the
+  # Island 1 boss, like the base game. That is after the goal, so the cooking locations are removed and
+  # there is no item. own_item: the "Sanji's Kitchen" item. sanji: having Sanji in the crew, no item.
+  # own_item_and_sanji: the item and Sanji.
+  # Options: vanilla, own_item, sanji, own_item_and_sanji
+  kitchen_unlock: own_item
+
+  # Sanji Is Required for Art of Cooking: Art of Cooking levels are only given once Sanji has joined the
+  # crew (received items wait until then).
+  # true / false
+  sanji_required_for_art: false
+
+  # Chopper's Pharmacy Unlock Condition: What opens Chopper's Pharmacy (compounding). vanilla: opens
+  # after the Island 1 boss, like the base game. That is after the goal, so the compounding locations
+  # are removed and there is no item. own_item: the "Chopper's Pharmacy" item. chopper: having Tony Tony
+  # Chopper in the crew, no item. own_item_and_chopper: the item and Chopper.
+  # Options: vanilla, own_item, chopper, own_item_and_chopper
+  pharmacy_unlock: own_item
+
+  # Chopper Is Required for Art of Compounding: Art of Compounding levels are only given once Tony Tony
+  # Chopper has joined the crew (received items wait until then).
+  # true / false
+  chopper_required_for_art: false
+
+  # Nami Is Required for Treasure Maps: Treasure Map Fragments are only given once Nami has joined the
+  # crew (received fragments wait until then).
+  # true / false
+  nami_required_for_maps: false
+
+  # Robin Is Required for Stone Monuments: Stone Monuments can't be read (touching them does nothing)
+  # until Nico Robin has joined the crew.
+  # true / false
+  robin_required_for_monuments: false
+
+  # Franky Is Required for Build Sites: Build Sites stay locked (impossible cost) until Franky has
+  # joined the crew and their Access item is found. Everything behind a Build Site (like the secret
+  # boss) needs Franky as well.
+  # true / false
+  franky_required_for_build_sites: false
+
+  # ---- Filler Weighting Options ------------------------------------
+  # Items Are Weighted Based on Quality: Stronger food and medicine is rarer in the filler pool. Off:
+  # every food / medicine / other item is equally likely within its group.
+  # true / false
+  filler_quality_weighting: true
+
+  # Include Bundle Filler: Small Packages (x3) and Large Packages (x5) of food, medicine and the
+  # Kuwagata are in the filler pool.
+  # true / false
+  include_bundle_filler: true
+
+  # Bundle Filler Is Weighted Based on Size: Bigger packages are rarer: Small Packages are half as
+  # likely as the single item, Large ones a quarter. Off: packages are as likely as the single item.
+  # Does nothing without Include Bundle Filler.
+  # true / false
+  bundle_size_weighting: true
+
+  # Food Filler Weight: How much of the filler is food (relative to Medicine and Other Filler Weight).
+  # 0: no food filler.
+  # Range: 0-100
+  food_filler_weight: 64
+
+  # Medicine Filler Weight: How much of the filler is medicine (relative to Food and Other Filler
+  # Weight). 0: no medicine filler.
+  # Range: 0-100
+  medicine_filler_weight: 27
+
+  # Other Filler Weight: How much of the filler is other items: the Kuwagata and the six Orbs (relative
+  # to Food and Medicine Filler Weight). 0: none of them.
+  # Range: 0-100
+  other_filler_weight: 9

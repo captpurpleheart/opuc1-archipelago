@@ -14,7 +14,7 @@ Sites, the first craft of each Development / Cooking / Compounding recipe, and (
 and creature for the first time.
 
 **Items:** the Straw Hats (you start with one), moves, co-op moves and abilities (including the Arts), tools and
-key items (Pickaxe, Bug-Catcher Net, Vacuum Cleaner, Fishing Rod and upgrades, ...), Usopp's Workshop / Sanji's
+key items (Pickaxe, Bug-Catcher Net, Vacuum Cleaner, Fishing Rod and upgrades, etc), Usopp's Workshop / Sanji's
 Kitchen / Chopper's Pharmacy, Gabri levels, shrine and build site access, treasure map fragments, and filler
 (food and medicine, also in packages of 3 and 5, Kuwagata and Orbs).
 
@@ -22,7 +22,7 @@ Other quality-of-life changes the client makes:
 - No Game Over: the party is revived instead. Boss fights restart, ambushes carry on, and elsewhere you're
   taken back to the Thousand Sunny.
 - Received items arrive through the game's own "obtained" messages. The **Armed Items** tab shows anything the
-  client is still holding back and why (Pickaxe until you reach the Thousand Sunny, a full bag, ...).
+  client is still holding back and why (Pickaxe until you reach the Thousand Sunny, a full bag, YAML option settings).
 - Recipe descriptions show which item a recipe's location holds (optional).
 
 ## Requirements
@@ -30,8 +30,8 @@ Other quality-of-life changes the client makes:
 - Archipelago **0.6.0** or newer
 - Dolphin
 - One Piece Unlimited Cruise Part 1, **European (PAL) version, game ID `ROUPAF`**, unmodified. Any disc format
-  works (ISO, WBFS, RVZ, ...). The US and Japanese versions are **not** supported.
-- The `dolphin-memory-engine` Python package
+  works (ISO, WBFS, RVZ, etc). The Japanese versions is **not** supported.
+- The `dolphin-memory-engine` Python package, should be apart of Archipelago by default, but just in case.
 - Optional: [Universal Tracker](https://github.com/FarisTheAncient/Archipelago/releases) - the client uses it
   automatically when installed.
 

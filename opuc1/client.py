@@ -553,8 +553,10 @@ async def game_loop(ctx: OPUCContext) -> None:
             # recipes are discovered with their Art level: rows 8-15 need Art 1, 16-23 Art 2, 24-31 Art 3
             if int(ctx.slot_data.get("recipes_discovered_through_arts", 1)):
                 levels = getattr(ctx, "art_levels", {})
-                hidden |= {(room, r) for room in ROOM_ART for r in range(32) if r // 8 > levels.get(room, 0)}
-            g.setup_recipes(ctx.comments, hidden)
+                veiled = {(room, r) for room in ROOM_ART for r in range(32) if r // 8 > levels.get(room, 0)} - hidden
+            else:
+                veiled = set()
+            g.setup_recipes(ctx.comments, hidden, veiled)
             if g.settled():
                 g.strip_fragment_drops()
             ctx.step = "reading checks"

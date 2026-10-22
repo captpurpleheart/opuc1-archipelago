@@ -1361,7 +1361,8 @@ class GameState:
         p = self.u32(RECIPE_ROWS + ROOM_INDEX[room] * 4)
         return p + row * 252 if valid(p) else None
 
-    def setup_recipes(self, comments: Dict[Tuple[str, int], str], hidden: Set[Tuple[str, int]] = frozenset()) -> None:
+    def setup_recipes(self, comments: Dict[Tuple[str, int], str], hidden: Set[Tuple[str, int]] = frozenset(),
+                      veiled: Set[Tuple[str, int]] = frozenset()) -> None:
         """Every recipe listed + discovered (no recipe chains), key-item recipes give the placeholder for good,
         and their comments say whose item it is."""
         for room in ("workshop", "kitchen", "pharmacy"):
@@ -1373,9 +1374,16 @@ class GameState:
             rows = self.rd(p, 252 * 32)
             new = bytearray(st)
             for r in range(32):
+                # State bits: 0x01 listed (shown in the menu, counted by 0x800F5C9C), 0x04 "idea" already had
+                # (0x800F5B54 skips those when an obtained item could discover a recipe), 0x08 made.
                 if (room, r) in hidden:
                     if not new[r] & 0x08:
-                        new[r] &= ~0x05 & 0xFF            # undo an earlier discovery (older client versions)
+                        new[r] &= ~0x05 & 0xFF            # undiscovered: the game can discover it ("An Idea!")
+                elif (room, r) in veiled:
+                    if not new[r] & 0x08:
+                        # shown as ????? but marked as already had: the game's own "An Idea!" popup must not fire
+                        # for these (on an Archipelago Item recipe it reads a null string, user 2026-10-22)
+                        new[r] = (new[r] | 0x04) & ~0x01 & 0xFF
                 elif struct.unpack_from(">H", rows, r * 252)[0]:
                     new[r] |= 0x05
             if new != st:

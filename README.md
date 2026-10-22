@@ -30,7 +30,7 @@ Other quality-of-life changes the client makes:
 - Archipelago **0.6.0** or newer
 - Dolphin
 - One Piece Unlimited Cruise Part 1, **European (PAL) version, game ID `ROUPAF`**, unmodified. Any disc format
-  works (ISO, WBFS, RVZ, etc). The Japanese versions is **not** supported.
+  works (ISO, WBFS, RVZ, etc). The Japanese versions are **not** supported.
 - The `dolphin-memory-engine` Python package, should be apart of Archipelago by default, but just in case.
 - Optional: [Universal Tracker](https://github.com/FarisTheAncient/Archipelago/releases) - the client uses it
   automatically when installed.

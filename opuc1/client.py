@@ -26,9 +26,9 @@ except ImportError:
     from CommonClient import CommonContext
 from NetUtils import ClientStatus, NetworkItem
 
-from .data import (ROD_GRADE_BYTES_4, line_level, rod_level_from_items, BASE_ID, CHARACTERS, CRAFTS, DUMMY_RECIPES, GAME, GOAL_FLAG, ITEM_IDS, ITEM_TABLE, ITEMS,
+from .data import (ROD_GRADE_BYTES_4, line_level, rod_level_from_items, BASE_ID, CHARACTERS, CRAFTS, DUMMY_RECIPES, GAME, GOALS, ITEM_IDS, ITEM_TABLE, ITEMS,
                    LOCATION_IDS, LOCATIONS, SHRINE_ACCESS, ROOM_OPTIONS, ART_ITEMS, ROOM_ART,
-                   MAP_FRAGMENT_GROUPS)
+                   MAP_FRAGMENT_GROUPS, BUILD_SITE_IDS)
 
 try:
     from .game_state import (BAG_CAPACITY, HIDDEN_ALSO_COMMENT, HIDDEN_AP_COMMENT, NO_LOCATION_COMMENT, GameState,
@@ -84,6 +84,7 @@ class OPUCCommandProcessor(ClientCommandProcessor):
         try:
             if g.hooked:
                 lines += [f"In game: {g.in_game()} (settled: {g.settled()})", f"Code patches applied: {g.patched}",
+                          f"Recipe discovery off: {g.discovery_patch_state()}",
                           f"Hook installed: {g.hook_active()}", g.scan_report(),
                           f"Item being given: {ctx.give_pending}", f"Consumables delivered: {ctx.delivered}",
                           f"Last consumable give: {ctx.last_give}; failed gives: {ctx.give_failures}",
@@ -109,6 +110,11 @@ class OPUCContext(CommonContext):
         self.comments: Dict[Tuple[str, int], str] = {}
         self.sent: Set[int] = set()
         self.goal_sent = False
+        self.last_seen: Set[int] = set()
+        self.owner_session = -1             # game session whose save owner was checked
+        self.late_session = None            # session that was already running when the client connected
+        self.connect_checked = False
+        self.save_ok = False
         self.delivered = 0          # how many received items have had their one-time delivery (consumables)
         self.passes = 0
         self.step = "starting"
@@ -257,12 +263,21 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
         if ok:
             rooms.add(d.data)
     g.set_rooms(rooms)
+    # Next Island menu: islands in the seed open with their Log Pose; the others keep the vanilla rule
+    goal = int(sd.get("goal", 0))
+    ch = g.chapter()
+    log = {d.data: bool(have[d.name]) for d in ITEMS if d.kind == "island"}
+    g.set_islands({1: True,
+                   2: log.get(2, False) if goal >= 1 else ch > 2,
+                   3: ch > 3, 4: ch > 4,
+                   5: log.get(5, False) if goal >= 2 else ch > 5})
     # Art of Development / Cooking / Compounding wait for their owner when that option is on
     art_held = {ci for _u, art_opt, ci in ROOM_OPTIONS.values() if int(sd.get(art_opt, 0)) and ci not in owned_chars}
     g.set_gabri(have["Progressive Gabri Level"])
-    # Build Sites (ids 110+) also wait for Franky with franky_required_for_build_sites
+    # Build Sites (x11-x16) also wait for Franky with franky_required_for_build_sites
     franky_ok = not int(sd.get("franky_required_for_build_sites", 0)) or 7 in owned_chars
-    g.set_shrine_locks({sid for name, sid in SHRINE_ACCESS.items() if have[name] and (sid < 110 or franky_ok)})
+    g.set_shrine_locks({sid for name, sid in SHRINE_ACCESS.items()
+                        if have[name] and (sid not in BUILD_SITE_IDS or franky_ok)})
     g.set_monuments(not int(sd.get("robin_required_for_monuments", 0)) or 6 in owned_chars)
     maps_held = bool(int(sd.get("nami_required_for_maps", 0))) and 4 not in owned_chars
     sunny = bool(g.script_flags([SUNNY_FLAG]))
@@ -353,7 +368,8 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
     if g.settled():
         new_scan = g.ensure_scan()
         if new_scan:
-            g.strip_fragment_drops()
+            g.strip_fragment_drops(list(ctx.slot_data.get("vacuum_orbs", [85] * 5)))
+        g.set_blue_orb_spot(70 if int(ctx.slot_data.get("blue_orb_spot_gives_iron_ore", 0)) else 81)
         g.install_hook()
         changed = g.write_tables(moves, abilities) | g.write_coop(coop)
         if changed or new_scan:
@@ -362,6 +378,14 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
         if int(ctx.slot_data.get("disable_food_diminishing_returns", 0)):
             g.patch_food_returns()      # the game's setter always stores 0
             g.reset_food_returns()      # fallback if the patch went in after the code was first used
+        # code patches below also go in at the title screen (apply_patches); repeated here for a late start
+        g.patch_database_menu()         # Database menu open from the start (catch locations follow it)
+        g.patch_recipe_discovery()      # no "An Idea!" popups: the client lists recipes itself
+        g.patch_idea_popup()
+        if int(ctx.slot_data.get("traps_never_expire", 0)):
+            g.patch_traps()             # creatures never escape a trap
+        if int(ctx.slot_data.get("fast_traps", 0)):
+            g.patch_fast_traps()        # 10 min catch, leaving the field once finishes it
         g.write_exp(1 + int(ctx.slot_data.get("move_exp_multiplier", 0)))   # 0 off, 1 = 2x, 2 = 3x
 
     deliver(ctx, g, key_items)
@@ -481,9 +505,13 @@ def pending_list(ctx: "OPUCContext", g: "GameState", limit: int = 40) -> None:
 
 def read_checks(ctx: OPUCContext, g: "GameState") -> Set[int]:
     found: Set[int] = set()
-    flags = g.script_flags(list(FLAG_LOCS) + [GOAL_FLAG])
+    goal_flag = GOALS[int(ctx.slot_data.get("goal", 0))][1]     # 11351 Eneru, 12351 Gecko Moria
+    flags = g.script_flags(list(FLAG_LOCS) + [goal_flag])
     found |= {FLAG_LOCS[f] for f in flags if f in FLAG_LOCS}
-    if GOAL_FLAG in flags and not ctx.goal_sent:
+    # Doom Guardian: script 15030 (final form beaten -> ending -> GameClear) only sets its end flag after the
+    # credits, so its function flag (set when 15030 starts, to be confirmed in game) counts as well.
+    final = int(ctx.slot_data.get("goal", 0)) == 2 and (bool(g.func_flags([15030])) or g.game_cleared())
+    if (goal_flag in flags or final) and not ctx.goal_sent:
         ctx.goal_sent = True
         Utils.async_start(ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}]))
         ctx.finished_game = True
@@ -492,7 +520,11 @@ def read_checks(ctx: OPUCContext, g: "GameState") -> Set[int]:
     found |= {CRAFT_LOCS[k] for k in g.crafted() if k in CRAFT_LOCS}
     # first catch of a fish / creature: its "ever obtained" bit (only locations that exist in this seed)
     in_seed = ctx.server_locations
-    found |= {lid for gid, lid in CATCH_LOCS.items() if lid in in_seed and g.found(gid)}
+    # The Database records every fish / creature caught (Sea Kings too, which never reach the bag as themselves;
+    # user 2026-10-23). The "ever obtained" bit is only a fallback while the Database can't be read.
+    caught = g.database_caught()
+    found |= {lid for gid, lid in CATCH_LOCS.items()
+              if lid in in_seed and (gid in caught if caught is not None else g.found(gid))}
     levels = g.move_levels()
     for lid, ci, mid, lv in MOVE_LOCS:
         if levels.get((ci, mid), 0) >= lv:
@@ -530,6 +562,11 @@ async def game_loop(ctx: OPUCContext) -> None:
                                          "(back to the title screen first).")
                 continue                                 # change nothing until the server is connected
             ctx.step = "patches"
+            # final boss: GameClear() sets the clear byte and asks for a reset right away, so look every pass
+            if int(ctx.slot_data.get("goal", 0)) == 2 and not ctx.goal_sent and g.game_cleared():
+                ctx.goal_sent = True
+                ctx.finished_game = True
+                Utils.async_start(ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}]))
             g.check_restart()
             g.session_tick()
             if g.sessions != ctx.session_seen:              # title screen / Game Over / reload: start over
@@ -538,11 +575,44 @@ async def game_loop(ctx: OPUCContext) -> None:
                 if ctx.give_pending:
                     g.cancel_give()
                     ctx.give_pending = None
-            g.apply_patches()
+            # Connected while a save was already loaded (user report: checks sent when connecting to the room after
+            # the game was running): the title-screen patches and the locked move tables came too late for this
+            # save, e.g. the game turns move EXP gathered while a move was locked into levels with the vanilla
+            # tables. Nothing is read or given until the player goes back to the title screen and loads again.
+            if not ctx.connect_checked:
+                ctx.connect_checked = True
+                if g.in_game():
+                    ctx.late_session = g.sessions
+                    logger.warning("A save was already loaded when the client connected. No checks are sent and no "
+                                   "items are given for it: go back to the title screen (reset) and load your save "
+                                   "again. Next time, connect the client at the title screen before loading.")
+            g.apply_patches(ctx.slot_data)
             g.rename_placeholder()
+            g.set_iron_scrap_gold(bool(int(ctx.slot_data.get("iron_scrap_gives_gold_energy", 0))))
             ctx.step = "table search"
             if g.settled() and g.needs_scan():
                 await asyncio.to_thread(g.do_scan)       # finds the move / ability / enemy tables (slow)
+            # A save from another seed / slot or one never played with this client (user report on 0.15.0: a save
+            # from another folder sent Nami's Level 5 moves, fish and story flags) must not send its progress as
+            # checks or get this seed's items. Decided once per loaded save, before the client marks it.
+            if g.settled() and ctx.owner_session != g.sessions:
+                owner = g.save_owner()
+                if owner is not None:
+                    ctx.owner_session = g.sessions
+                    ctx.save_ok = owner in ("this", "fresh")
+                    if not ctx.save_ok:
+                        logger.warning("This save doesn't belong to this seed and slot ("
+                                       + ("made with another seed or slot" if owner == "other"
+                                          else "never played with the Archipelago client")
+                                       + "). No checks are sent and no items are given. Load this seed's save "
+                                         "(or start a new game) from the title screen.")
+            if not g.settled():
+                ctx.owner_session = -1
+                ctx.save_ok = False
+            elif not ctx.save_ok or g.sessions == ctx.late_session:
+                ctx.step = "waiting for this seed's save"
+                await asyncio.sleep(0.25)
+                continue
             ctx.step = "applying items"
             have = received_counts(ctx)
             apply_items(ctx, g, have)
@@ -556,11 +626,17 @@ async def game_loop(ctx: OPUCContext) -> None:
                 veiled = {(room, r) for room in ROOM_ART for r in range(32) if r // 8 > levels.get(room, 0)} - hidden
             else:
                 veiled = set()
+            g.clear_idea_callbacks()
             g.setup_recipes(ctx.comments, hidden, veiled)
             if g.settled():
-                g.strip_fragment_drops()
+                g.strip_fragment_drops(list(ctx.slot_data.get("vacuum_orbs", [85] * 5)))
             ctx.step = "reading checks"
-            new = read_checks(ctx, g) - ctx.sent - set(ctx.checked_locations)
+            # Only once a save has been loaded for a few seconds, and only checks seen on two passes in a row: while
+            # a save loads, flag sections and move tables can hold stale or half-written data (public 0.15.0
+            # report: random checks sent on every boot of a French save).
+            seen = (read_checks(ctx, g) & set(ctx.server_locations)) if g.settled() else set()
+            new = (seen & ctx.last_seen) - ctx.sent - set(ctx.checked_locations)
+            ctx.last_seen = seen
             ctx.passes += 1
             ctx.step = "done"
             g.remove_placeholders()

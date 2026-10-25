@@ -2,10 +2,11 @@
 
 ## What is randomized?
 
-This world covers the **Thousand Sunny and Island 1 (Wooded Isle)** of One Piece Unlimited Cruise Part 1 (Wii, PAL).
+This world covers the **Thousand Sunny, Island 1 (Wooded Isle), Island 2 (Gorge Isle) and the final island
+(Central Isle)** of One Piece Unlimited Cruise Part 1 (Wii, PAL). Islands 3 and 4 are planned.
 
-**Locations** (about 340 with the default options):
-- Move level-ups (levels 2-5 of every move) and co-op move level-ups
+**Locations** (about 400 with the default options):
+- Move level-ups (levels 2-5 of every move) and, optionally, super and co-op move level-ups
 - Story events, ambushes and bosses, including the secret boss
 - Treasure chests and treasure map dig spots
 - Stone Monuments
@@ -18,10 +19,12 @@ This world covers the **Thousand Sunny and Island 1 (Wooded Isle)** of One Piece
 - Moves, co-op moves and abilities (including the Art of Development / Cooking / Compounding)
 - Tools and key items: Pickaxe, Bug-Catcher Net, Vacuum Cleaner, Fishing Rod and its upgrades, and others
 - Usopp's Workshop, Sanji's Kitchen and Chopper's Pharmacy
-- Gabri levels, shrine and build site access, treasure map fragments
+- The islands: "Gorge Isle, the Ruined Path" and "Central Isle, New Beginnings" (the Wooded Isle is always open)
+- Gabri levels, shrine and build site access, "The Final Door", treasure map fragments
 - Filler: food, medicine (also in packages of 3 and 5), Kuwagata and Orbs
 
-**Goal:** defeat the Wooded Isle boss.
+**Goal** (option): defeat "God" Eneru, Gecko Moria, or the Doom Guardian on Central Isle (default; needs
+"The Final Door" and all 13 Gabri levels).
 
 ## What does another world's item look like?
 

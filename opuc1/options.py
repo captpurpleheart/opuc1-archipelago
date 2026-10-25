@@ -19,6 +19,22 @@ class StartingCharacter(Choice):
     default = 0
 
 
+class Goal(Choice):
+    """Which boss ends the game. The goal also decides which islands are in the seed. god_eneru: "God" Eneru on
+    the Wooded Isle (Island 1 only). gecko_moria: Gecko Moria on the Gorge Isle (Islands 1 and 2). doom_guardian:
+    the Doom Guardian on Central Isle, behind The Final Door (Islands 1, 2 and the final island; Islands 3 and 4
+    aren't in the world yet).
+    Islands other than the Wooded Isle open with their island item."""
+    display_name = "Goal"
+    option_god_eneru = 0
+    option_gecko_moria = 1
+    option_doom_guardian = 2
+    alias_wooded_isle = 0     # older YAMLs
+    alias_gorge_isle = 1
+    alias_central_isle = 2
+    default = 2
+
+
 class CombineRodAndLine(Toggle):
     """No Rod Line items: each Rod Level item also raises the line level by the same step (with 6 items of each,
     one Rod Level item = +5 rod and +5 line). Off: Rod Level and Rod Line items are separate."""
@@ -48,24 +64,15 @@ class MoveExpMultiplier(Choice):
     default = 0
 
 
-class MoveLocationsImportant(DefaultOnToggle):
-    """Move level-up locations can hold progression items. Off: they only get useful items, filler or traps."""
-    display_name = "Move Locations Are Important"
-
-
-class SuperMoveLocationsImportant(Toggle):
-    """Super move level-up locations can hold progression items. Off: useful items, filler or traps only.
-    Has no effect when Move Locations Are Important is off."""
-    display_name = "Super Move Locations Are Important"
-
-
-class MoveImportanceMaxLevel(Range):
-    """The highest move level whose level-up location can hold progression items.
-    2: only Level 2 locations; 5: every level."""
-    display_name = "Important Move Levels Up To"
-    range_start = 2
-    range_end = 5
-    default = 5
+class SuperMoveLocations(Choice):
+    """Level 2-5 of each super move and co-op move are locations.
+    off: no super / co-op move locations. on: they can hold anything. unimportant: only useful items, filler or
+    traps. (Standard move levels 2-5 are always locations and can always hold progression.)"""
+    display_name = "Super Move Locations"
+    option_off = 0
+    option_on = 1
+    option_unimportant = 2
+    default = 2
 
 
 class Fishsanity(Choice):
@@ -126,8 +133,8 @@ class WorkshopUnlock(Choice):
 
 class KitchenUnlock(Choice):
     """What opens Sanji's Kitchen (cooking).
-    vanilla: opens after the Island 1 boss, like the base game. That is after the goal, so the
-    cooking locations are removed and there is no item.
+    vanilla: opens after the Island 1 boss (Eneru), like the base game; no item. With goal god_eneru that is
+    after the goal, so the cooking locations are removed.
     own_item: the "Sanji's Kitchen" item.
     sanji: having Sanji in the crew, no item.
     own_item_and_sanji: the item and Sanji."""
@@ -141,8 +148,8 @@ class KitchenUnlock(Choice):
 
 class PharmacyUnlock(Choice):
     """What opens Chopper's Pharmacy (compounding).
-    vanilla: opens after the Island 1 boss, like the base game. That is after the goal, so the
-    compounding locations are removed and there is no item.
+    vanilla: opens after the Island 1 boss (Eneru), like the base game; no item. With goal god_eneru that is
+    after the goal, so the compounding locations are removed.
     own_item: the "Chopper's Pharmacy" item.
     chopper: having Tony Tony Chopper in the crew, no item.
     own_item_and_chopper: the item and Chopper."""
@@ -180,6 +187,55 @@ class DisableFoodDiminishingReturns(Toggle):
     """Feeding a Straw Hat the same food again always gives its full stat gain (vanilla: the gain drops each
     time until it stops)."""
     display_name = "Disable Diminishing Returns for Food"
+
+
+class TrapsNeverExpire(DefaultOnToggle):
+    """A set trap always catches something and keeps it until you check the trap (vanilla: a trap has a random
+    lifetime of 30-50 minutes, and if it runs out before or after the catch, the trap is destroyed and the creatures
+    are lost). How long the catch takes is set by Fast Traps."""
+    display_name = "Traps Never Expire"
+
+
+class FastTraps(DefaultOnToggle):
+    """A set trap catches after 10 minutes of play, and leaving the trap's area once (another zone, or off the
+    Thousand Sunny) finishes it straight away (vanilla: 30-50 minutes, and leaving the area takes 10 minutes off
+    but never below 20). What the trap catches is still random."""
+    display_name = "Fast Traps"
+
+
+class IronScrapGivesGoldEnergy(DefaultOnToggle):
+    """Feeding Gabri an Iron Scrap also gives 10 Gold Energy (vanilla: 15 Red, 25 Black, no Gold)."""
+    display_name = "Iron Scrap give Gold Energy"
+
+
+class BlueOrbSpotGivesIronOre(DefaultOnToggle):
+    """The repeatable Blue Orb dig spot next to the Thousand Sunny gives Pure Iron Ore instead (the Wooded Isle
+    Pure Iron Ore spots can only be dug once)."""
+    display_name = "Blue Orb Dig Spot Gives Pure Iron Ore"
+
+
+class _UsefulOrProgression(Choice):
+    option_useful = 0
+    option_progression = 1
+    default = 0
+
+
+class BagPaletteUpgradeItemType(_UsefulOrProgression):
+    """Whether "Progressive Item Bag Upgrade" and "Progressive Palette Upgrade" are Useful or Progression items
+    (progression here is progression that skips balancing)."""
+    display_name = "Bag & Palette Upgrade Item Type"
+
+
+class CatBurglarItemType(_UsefulOrProgression):
+    """Whether "Nami - Progressive Cat Burglar" is a Useful or Progression item (progression here is progression
+    that skips balancing)."""
+    display_name = "Nami's Cat Burglar Item Type"
+
+
+class LightWeightItemType(_UsefulOrProgression):
+    """Whether "Brook - Progressive Light Weight" is a Useful or Progression item (progression here is progression
+    that skips balancing)."""
+    display_name = "Brook's Light Weight Item Type"
 
 
 class RecipesDiscoveredThroughArts(DefaultOnToggle):
@@ -256,12 +312,11 @@ class OtherFillerWeight(Range):
 @dataclass
 class OPUCOptions(PerGameCommonOptions):
     starting_character: StartingCharacter
+    goal: Goal
     combine_rod_and_line: CombineRodAndLine
     rod_upgrade_items: RodUpgradeItems
     move_exp_multiplier: MoveExpMultiplier
-    move_locations_important: MoveLocationsImportant
-    super_move_locations_important: SuperMoveLocationsImportant
-    move_importance_max_level: MoveImportanceMaxLevel
+    super_move_locations: SuperMoveLocations
     fishsanity: Fishsanity
     creaturesanity: Creaturesanity
     fish_locations: FishLocations
@@ -275,6 +330,13 @@ class OPUCOptions(PerGameCommonOptions):
     chopper_required_for_art: ChopperRequiredForArt
     treasure_maps_need_every_fragment: TreasureMapsNeedEveryFragment
     disable_food_diminishing_returns: DisableFoodDiminishingReturns
+    traps_never_expire: TrapsNeverExpire
+    iron_scrap_gives_gold_energy: IronScrapGivesGoldEnergy
+    blue_orb_spot_gives_iron_ore: BlueOrbSpotGivesIronOre
+    bag_palette_upgrade_item_type: BagPaletteUpgradeItemType
+    cat_burglar_item_type: CatBurglarItemType
+    light_weight_item_type: LightWeightItemType
+    fast_traps: FastTraps
     recipes_discovered_through_arts: RecipesDiscoveredThroughArts
     recipes_spoil_locations: RecipesSpoilLocations
     nami_required_for_maps: NamiRequiredForMaps
@@ -289,12 +351,13 @@ class OPUCOptions(PerGameCommonOptions):
 
 
 OPTION_GROUPS = [
-    OptionGroup("Item Settings", [CombineRodAndLine, RodUpgradeItems, TreasureMapsNeedEveryFragment,
+    OptionGroup("Item Options", [CombineRodAndLine, RodUpgradeItems, TreasureMapsNeedEveryFragment,
                                    DisableFoodDiminishingReturns, RecipesDiscoveredThroughArts,
-                                   RecipesSpoilLocations]),
-    OptionGroup("Moves", [MoveExpMultiplier, MoveLocationsImportant, SuperMoveLocationsImportant, MoveImportanceMaxLevel]),
-    OptionGroup("Fishing & Bug-Catching", [Fishsanity, Creaturesanity, FishLocations, CreatureLocations,
-                                           SeaKingsImportant]),
+                                   RecipesSpoilLocations, IronScrapGivesGoldEnergy, BlueOrbSpotGivesIronOre,
+                                   BagPaletteUpgradeItemType]),
+    OptionGroup("Move & Skill Options", [MoveExpMultiplier, SuperMoveLocations, CatBurglarItemType, LightWeightItemType]),
+    OptionGroup("Fishing & Bug-Catching Options", [Fishsanity, Creaturesanity, FishLocations, CreatureLocations,
+                                           SeaKingsImportant, TrapsNeverExpire, FastTraps]),
     OptionGroup("Thousand Sunny & Crew Gating Options",
                 [WorkshopUnlock, UsoppRequiredForArt, KitchenUnlock, SanjiRequiredForArt, PharmacyUnlock,
                  ChopperRequiredForArt, NamiRequiredForMaps, RobinRequiredForMonuments,

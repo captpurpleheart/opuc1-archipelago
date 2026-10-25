@@ -2,8 +2,8 @@
 One Piece Unlimited Cruise Part 1 (ROUPAF) - shared game data for the world and the client.
 No Archipelago imports here, so the client and tests can load it directly.
 
-Island 1 foundation test: Prologue, Wooded Isle (Island 1) and the Thousand Sunny.
-Goal: defeat the Island 1 boss (EventScriptEndFlag 11351).
+Scope: Prologue, Thousand Sunny, Wooded Isle (Island 1) and Gorge Isle (Island 2).
+Goal (option): the Island 1 boss (Eneru, flag 11351) or the Island 2 boss (Gecko Moria, flag 12351).
 """
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
@@ -289,14 +289,50 @@ def filler_group(gid: int) -> str:
     return "food" if gid in FOOD_IDS else "medicine" if gid in MEDICINE_IDS else "other"
 
 
+# Filler that a shrine asks for (event/epoint/zone*.bin): never in the pool, so filler can't let a player
+# activate a shrine before logic expects it (user, 2026-10-22). The items keep their ids.
+SHRINE_OFFERING_FILLER = {"Healing Capsule", "Stamina Tonic", "Mock Cherry Pie", "Dual-Action Tonic"}
+FILLER_COUNTS: Dict[str, int] = {f"{p} {n}": c for p, c, _s in PACKAGES for n, _g, _w in _singles}
+for _n, _gid, _w in FILLER_ITEMS:
+    _add(_n, FILLER, 0, "filler", {"item": _gid, "count": FILLER_COUNTS.get(_n, 1)})
+
+# ---- Island 2 update (0.16.0): added after the filler so earlier item ids keep their numbers.
+# ISLAND_2_ITEMS are only in the pool when Gorge Isle is in the seed (goal option).
+GORGE_SHRINE_ACCESS = {
+    "Gorge Isle Shrine 1 Access": 200, "Gorge Isle Shrine 2 Access": 201,
+    "Gorge Isle Build Site 1 Access": 211, "Gorge Isle Build Site 2 Access": 212,
+    "Gorge Isle Build Site 3 Access": 213, "Gorge Isle Build Site 4 Access": 214,
+    "Gorge Isle Build Site 5 Access": 215, "Gorge Isle Build Site 6 Access": 216,
+}
+for _n, _sid in GORGE_SHRINE_ACCESS.items():
+    _add(_n, PROG if _sid in (200, 201, 211, 212, 213) else PROG_SKIP, 1, "shrine", _sid)
+SHRINE_ACCESS.update(GORGE_SHRINE_ACCESS)
+# The Wherever Cannon (Sunny shrine 1010): its build site appears on Wooded Isle after reaching Gorge Isle (user)
+_add("Thousand Sunny Build Site 1 Access", PROG_SKIP, 1, "shrine", 1010)
+SHRINE_ACCESS["Thousand Sunny Build Site 1 Access"] = 1010
+for _k in range(4):
+    _add(f"Map 1, Fragment {_k + 1}", PROG_SKIP, 1, "key", {"item": 190 + _k})
+for _k in range(5):
+    _add(f"Map 4, Fragment {_k + 1}", PROG_SKIP, 1, "key", {"item": 201 + _k})
+for _k in range(3):
+    _add(f"Map 6, Fragment {_k + 1}", PROG_SKIP, 1, "key", {"item": 209 + _k})
+# Log Poses open islands in the Next Island menu (the Wooded Isle is always open)
+_add("Gorge Isle, the Ruined Path", PROG, 1, "island", 2)
+_add("Central Isle, New Beginnings", PROG, 1, "island", 5)
+# The Final Door (shrine 500): locked (impossible cost) until this item, so only with goal doom_guardian
+_add("The Final Door", PROG, 1, "shrine", 500)
+SHRINE_ACCESS["The Final Door"] = 500
+ISLAND_5_ITEMS = {"Central Isle, New Beginnings", "The Final Door"}
+ISLAND_2_ITEMS = set(GORGE_SHRINE_ACCESS) | {"Thousand Sunny Build Site 1 Access",
+                                             "Gorge Isle, the Ruined Path"} | {f"Map {m}, Fragment {k + 1}" for m, n in ((1, 4), (4, 5), (6, 3))
+                                               for k in range(n)}
+BUILD_SITE_IDS = {sid for sid in SHRINE_ACCESS.values() if sid % 100 >= 10}
+
 # Treasure maps in this world: map name -> its fragment item names
 MAP_FRAGMENT_GROUPS: Dict[str, List[str]] = {}
 for _i in ITEMS:
     if _i.name.startswith("Map ") and ", Fragment " in _i.name:
         MAP_FRAGMENT_GROUPS.setdefault(_i.name.split(",")[0], []).append(_i.name)
-FILLER_COUNTS: Dict[str, int] = {f"{p} {n}": c for p, c, _s in PACKAGES for n, _g, _w in _singles}
-for _n, _gid, _w in FILLER_ITEMS:
-    _add(_n, FILLER, 0, "filler", {"item": _gid, "count": FILLER_COUNTS.get(_n, 1)})
 
 ITEM_TABLE: Dict[str, ItemDef] = {i.name: i for i in ITEMS}
 ITEM_IDS: Dict[str, int] = {i.name: BASE_ID + n for n, i in enumerate(ITEMS)}
@@ -346,7 +382,7 @@ _loc("Wooded Isle - Restorative Drug Chest", "Wooded Isle Part 1", ("chest", 117
 _loc("Wooded Isle - Steel Chain Chest", "Wooded Isle Part 1", ("chest", 11701))
 _loc("Wooded Isle - Crystal Chest", "Wooded Isle Part 1", ("chest", 11707))
 _loc("Wooded Isle Shrine - An Enormous Boulder", "Wooded Isle Part 1", ("shrine", 100))
-_loc("Wooded Isle - Mid-Boss Defeated", "Wooded Isle Mid-Boss", ("flag", 11301))
+_loc("Wooded Isle Mid-Boss - Bartholomew Kuma Defeated", "Wooded Isle Mid-Boss", ("flag", 11301))
 _loc("Wooded Isle - Gabri Level Up Event 1", "Wooded Isle Mid-Boss", ("flag", 11303))
 _loc("Wooded Isle - Green Orb Chest", "Wooded Isle Mid-Boss", ("chest", 11705))
 _loc("Wooded Isle - Enforcer Ambush", "Wooded Isle Part 2", ("flag", 11281))
@@ -355,12 +391,17 @@ _loc("Wooded Isle Build Site - An Unclimbable Area", "Wooded Isle Part 2", ("shr
 _loc("Wooded Isle - Flour Chest", "An Unclimbable Area", ("chest", 11702))
 _loc("Wooded Isle Shrine - What Lies Asleep in the Amber", "Wooded Isle Part 2", ("shrine", 101))
 _loc("Wooded Isle Build Site - An Incomplete Path", "Wooded Isle Part 2 (Right)", ("shrine", 112))
-_loc("Wooded Isle - Secret Boss Defeated", "An Incomplete Path", ("flag", 11401))
+_loc("Wooded Isle Secret Boss - Captain Buggy Defeated", "An Incomplete Path", ("flag", 11401))
 _loc("Wooded Isle - Gabri Level Up Event 3", "An Incomplete Path", ("flag", 11403))
 _loc("Wooded Isle - Sea King Fin Chest", "An Incomplete Path", ("chest", 11706))
 
-GOAL_EVENT = "Wooded Isle - Island Boss Defeated"   # EventScriptEndFlag 11351, region "Island Boss"
-GOAL_FLAG = 11351
+# Goal (option "goal"): the island boss of the last island in the seed (event, no location id)
+ENERU = 'Wooded Isle Island Boss - "God" Eneru Defeated'          # EventScriptEndFlag 11351
+MORIA = "Gorge Isle Island Boss - Gecko Moria Defeated"            # EventScriptEndFlag 12351
+FINAL_BOSS = "Central Isle - Doom Guardian Defeated"                  # 15020/15030, GameClear ([0x8068A298]+6)
+GOALS = {0: (ENERU, 11351, "Island Boss"), 1: (MORIA, 12351, "Gorge Isle Island Boss"),
+         2: (FINAL_BOSS, 15030, "Central Isle")}
+GOAL_EVENT, GOAL_FLAG = ENERU, 11351   # defaults for older slot data
 
 # Crafting first-time checks: (room, row, original result name, art level, dummy?)
 # Art level = row // 8 (rows 0-7 level 0 ... 24-31 level 3, confirmed in game).
@@ -437,8 +478,78 @@ for _m, _cid, _item, _who in COOP_LOCATIONS:
 # location IDs keep their numbers.
 _loc("Prologue Part 1 Completed", "Prologue Part 1", ("flag", 11011))
 _loc("Prologue Part 2 Completed", "Prologue Part 2", ("flag", 11021))
-_loc("Meet Gabri!", "Prologue Part 3", ("flag", 11032))
+_loc("Meet Gabri", "Prologue Part 3", ("flag", 11032))
 _loc("Prologue Part 3 Completed", "Prologue Part 3", ("flag", 11031))
+
+# ---- Island 2 update (0.16.0). Everything here is after Eneru, so these only exist with goal Gorge Isle.
+# Eneru is a location once he isn't the goal; his Gabri level-up, two Sunny chests and Lightning Beetles
+# (Wooded Isle Part 2, outside the boss room) come after him (user, 2026-10-22).
+_loc(ENERU, "Island Boss", ("flag", 11351))
+_loc("Wooded Isle - Gabri Level Up Event 2", "Post-Eneru", ("flag", 11353))
+_loc("Thousand Sunny - Pickaxe Chest", "Thousand Sunny (After an Island Boss)", ("chest", 10857))
+_loc("Thousand Sunny - Red Fruit Chest", "Thousand Sunny (After an Island Boss)", ("chest", 10850))
+# Gorge Isle (Island 2), user's region map 2026-10-22. Obstructed Paths / Hidden Area / Secret Boss need a Mole
+# (not in logic yet): no locations there.
+_loc("First Step on the Gorge Isle", "Gorge Isle Part 1", ("flag", 12200))
+_loc("Gorge Isle - Zombie Ambush", "Gorge Isle Part 1", ("flag", 12251))
+_loc("Gorge Isle - Golden Fruit Chest", "Gorge Isle Part 2", ("chest", 12700))
+_loc("Gorge Isle - The Silent Ancient Creature", "Gorge Isle Part 2", ("shrine", 200))
+_loc("Gorge Isle Mid-Boss - Captain Kuro Defeated", "Gorge Isle Part 3", ("flag", 12301))
+_loc("Gorge Isle Mid-Boss - Don Krieg Defeated", "Gorge Isle Part 3", ("flag", 12302))
+_loc("Gorge Isle - Gabri Level Up Event 1", "Gorge Isle Part 3", ("flag", 12303))
+_loc("Gorge Isle - Marine Ambush", "Gorge Isle Part 3", ("flag", 12271))
+_loc("Gorge Isle - Red Orb Chest", "Gorge Isle Part 3", ("chest", 12705))
+_loc("Gorge Isle - Blue Fruit Chest", "Gorge Isle Part 3", ("chest", 12706))
+_loc("Gorge Isle - An Incomplete Path", "Gorge Isle Part 3", ("shrine", 211))
+_loc("Gorge Isle - Antidote Powder Chest", "Gorge Isle Part 4", ("chest", 12701))
+_loc("Gorge Isle - Royal Jelly Chest", "Gorge Isle Part 4", ("chest", 12703))
+_loc("Gorge Isle - Enhanced Reel Chest", "Gorge Isle Part 4", ("chest", 12704))
+_loc("Gorge Isle Monument - Creation", "Gorge Isle Part 4", ("flag", 12652))
+_loc("Gorge Isle - The Ruins in the Sunset", "Gorge Isle Part 4", ("shrine", 201))
+_loc("Gorge Isle - An Incomplete Path (2)", "Gorge Isle Part 4", ("shrine", 212))
+_loc("Gorge Isle - An Unclimbable Path", "Gorge Isle Optional Bridge Path", ("shrine", 213))
+_loc("Gorge Isle - Mask Fragment Chest", "Gorge Isle Optional Ladder Path", ("chest", 12702))
+_loc("Gorge Isle - An Incomplete Path (3)", "Gorge Isle Optional Ladder Path", ("shrine", 214))
+_loc("Gorge Isle - Large Marine Ambush", "Gorge Isle Optional Poison Path", ("flag", 12263))
+_loc("Gorge Isle Monument - Hope", "Gorge Isle Optional Poison Path", ("flag", 12651))
+# ---- 0.17.0: islands open with Log Pose items; the final island (Central Isle) and after-Gecko Moria checks.
+_loc("Thousand Sunny - Gold Orb Chest (1)", "Post-Eneru", ("chest", 10852))          # switched on by 11353
+_loc(MORIA, "Gorge Isle Island Boss", ("flag", 12351))
+_loc("Gorge Isle - Gabri Level Up Event 2", "Post-Gecko Moria", ("flag", 12353))
+_loc("Thousand Sunny - Gold Orb Chest (2)", "Post-Gecko Moria", ("chest", 10853))   # switched on by 12353
+_loc("Central Isle Monument - Inferno", "Central Isle", ("flag", 15800))
+# Sunny shrine 1010, build site on Wooded Isle once Gorge Isle has been reached (user, 2026-10-22)
+_loc("Thousand Sunny - Wherever Cannon", "Gorge Isle Part 1", ("shrine", 1010))
+
+# Recipes that only became possible with Gorge Isle ingredients (or weren't listed before). Locations are
+# only created for recipes whose ingredients are all reachable in the seed (rules.craft_in_scope).
+CRAFTS_EXTRA: List[Tuple[str, int, str, bool]] = [
+    ("workshop", 5, "Traps", False), ("workshop", 8, 'Giant Slingshot "Kabuto"', True),
+    ("workshop", 15, "Large Item Bag", True), ("workshop", 17, "Batteries", False),
+    ("workshop", 24, "Sogeking Mask", True), ("workshop", 25, "Flamethrowers", False),
+    ("workshop", 26, "Sea King Fishing Rod", True), ("workshop", 28, "Uso/Cho Hammer Comet", True),
+    ("workshop", 30, "Sea King Rod Upgrade", True),
+    ("kitchen", 0, "Angel Omelette", False), ("kitchen", 2, "Large Mushroom Salad", False),
+    ("kitchen", 6, "Seagull Bone Soup", False), ("kitchen", 8, "Shrimp with Tartar Sauce", False),
+    ("kitchen", 10, "Mock Cherry Pie", False), ("kitchen", 13, "Saury Full Course", False),
+    ("kitchen", 14, "Pirate Shaved Ice", False), ("kitchen", 15, "Pirate's Lunch", False),
+    ("kitchen", 16, "Sauteed Tuna Steak", False), ("kitchen", 18, "Special Pirate Soda", False),
+    ("kitchen", 19, "Baked Stone Stew", False), ("kitchen", 20, "Spicy Miso Shark's Fin", False),
+    ("kitchen", 22, "Octopus Dumplings", False), ("kitchen", 23, "Ancient-Recipe Soup", False),
+    ("kitchen", 24, "Sashimi Assortment", False), ("kitchen", 26, "Stamina Stew", False),
+    ("kitchen", 28, "Giant Shell Boat", False), ("kitchen", 29, "Roasted Meat Festival", False),
+    ("kitchen", 30, "Meat-Lover's Delight", False),
+    ("pharmacy", 2, "Stamina Capsule", False), ("pharmacy", 5, "Dual-Action Capsule", False),
+    ("pharmacy", 7, "Gunpowder", False), ("pharmacy", 10, "Stamina Tonic", False),
+    ("pharmacy", 12, "Syrup", False), ("pharmacy", 13, "Dual-Action Tonic", False),
+    ("pharmacy", 14, "Experiment Equipment", True), ("pharmacy", 15, "Thunder Powder", False),
+    ("pharmacy", 17, "Anti-Cold Cream", False), ("pharmacy", 18, "Antidote Powder", False),
+    ("pharmacy", 23, "Ice Powder", False), ("pharmacy", 25, "Restorative Drug", False),
+    ("pharmacy", 28, "Rumble Ball", True), ("pharmacy", 31, "Flame Powder", False),
+]
+for _room, _row, _res, _d in CRAFTS_EXTRA:
+    _loc(f"{ROOM_LOCATION_PREFIX[_room]} {_res}", "Thousand Sunny", ("craft", _room, _row))
+CRAFTS += CRAFTS_EXTRA
 
 LOCATION_TABLE: Dict[str, LocDef] = {l.name: l for l in LOCATIONS}
 LOCATION_IDS: Dict[str, int] = {l.name: BASE_ID + n for n, l in enumerate(LOCATIONS)}
@@ -495,3 +606,7 @@ SUPER_MOVES = {
     ("Robin", "Infinite Fleur Amaryllis"), ("Robin", "Cien Fleur Big Tree"), ("Franky", "Ultimate Hammer"),
     ("Franky", "Heavy Nunchaku"), ("Brook", "Three Verse Arrow Notch Slice"), ("Brook", "Lullaby Parry"),
 }
+
+# Locations removed by Super Move Locations: off (super moves and co-op moves)
+SUPER_LOCATION_NAMES = ({f"{_c} - {_m} Level {_lv}" for _c, _m in SUPER_MOVES for _lv in MOVE_LEVELS}
+                        | {f"Co-op - {_m} Level {_lv}" for _m, _cid, _i, _w in COOP_LOCATIONS for _lv in MOVE_LEVELS})

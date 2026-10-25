@@ -99,6 +99,14 @@ INSTR_CODE = [0x28030002,                                                   # cm
               0x4E800020,                                                   # blr
               INSTR_ORIG,                                                   # stwu r1,-32(r1)
               0x48000000 | ((INSTR_FUNC + 4 - (INSTR_CODE_AT + 28)) & 0x3FFFFFC)]
+# Next Island menu: 0x801C2488(n) says whether island n can be picked (n = 0: the menu entry itself; vanilla
+# n 1-2 always but the menu needs chapter > 2, n 3-5 need chapter > n). The entry branches to our routine:
+# n = 0..6 return a byte of ISLAND_TABLE, which the client fills from the Log Pose items (opuc-sunny-state.md;
+# tested with tools/opuc_sunny.py, Gorge Isle before Eneru plays fine, user 2026-10-22). Code patch.
+ISLAND_FUNC, ISLAND_ORIG, ISLAND_CODE_AT, ISLAND_TABLE = 0x801C2488, 0x9421FFE0, 0x80002700, 0x80002780
+ISLAND_CODE = [0x28030006, 0x41810014, 0x3C808000, 0x38842780,
+               (31 << 26) | (3 << 21) | (4 << 16) | (3 << 11) | (87 << 1), 0x4E800020, ISLAND_ORIG,
+               0x48000000 | ((ISLAND_FUNC + 4 - (ISLAND_CODE_AT + 28)) & 0x3FFFFFC)]
 # instant unlock hook (per-frame callback slot 3 of the character manager)
 STUB, HOOK_FLAG, HOOK_COUNTER = 0x80002C00, 0x80002F20, 0x80002F21
 MOVE_CHECKER, ABILITY_CHECKER = 0x800680B8, 0x80067E88
@@ -129,7 +137,9 @@ FIGHTS = [  # from event/script2 (all 989 scripts, 2026-10-18); later phases aft
     (11300, 11301),                   # Kuma (bos_kma)
     (11350, 11351),                   # Island 1 boss (bos_enl)
     (11400, 11401),                   # Buggy (bos_bgy)
-    (12250, 12251), (12262, 12263), (12270, 12271), (12300, 12301), (12350, 12351), (12400, 12401),
+    (12250, 12251), (12262, 12263), (12270, 12271),
+    (12300, 12301), (12300, 12302),   # Gorge Isle mid-boss: Kuro (12301) and Krieg (12302) in one fight
+    (12350, 12351), (12400, 12401),
     (13250, 13251), (13262, 13263), (13270, 13271), (13280, 13281), (13300, 13301), (13350, 13352),
     (13353, 13355), (13400, 13401),
     (14252, 14253), (14260, 14261), (14270, 14271), (14280, 14281), (14300, 14301), (14350, 14351),
@@ -230,6 +240,13 @@ SHRINE_LOCKED = 9999
 STORE_ITEMS = {1, 3, 6, 8, 62, 87, 89, 90, 91, 92, 93, 94, 95, 96} | set(range(190, 226))
 BAG_CAPACITY = {162: ("bag", 28), 163: ("bag", 35), 164: ("palette", 6), 165: ("palette", 9)}
 LIST_OFFSET = {"bag": 0x120, "storage": 0x150, "palette": 0x180}
+GOLD_ORB = 85
+ORB_ITEMS = [80, 81, 82, 83, 84, 85]     # Red, Blue, White, Green, Black, Gold
+# field/fobj_gen_item_table.atb (items from breaking / burning / vacuuming field objects): ALTB, 103 rows of
+# 300 bytes at +0x10, 25 x {u32 item, u32 count, f32 chance} per row. Rows 96-100 column 22 = the Sunny's
+# Map 10 fragments (vacuumed dust).
+GEN_ITEM_OFF, GEN_ITEM_ROW, GEN_ITEM_ROWS, GEN_ITEM_VACUUM = 0x10, 300, 103, 22
+GEN_ITEM_MAP_ROWS = [96, 97, 98, 99, 100]
 FRAGMENT_ITEMS = set(range(190, 226))      # every treasure map fragment (they are all AP items eventually)
 
 
@@ -428,7 +445,8 @@ class GameState:
                     # boss fight: restart it. Its clear script is switched off first so removing
                     # the boss / enemies can't count as a win; the start script switches it on again.
                     start, clear = fight
-                    self.set_func_enable(clear, False)
+                    for c in self.fight_clears(start):    # every unfinished clear script of this fight
+                        self.set_func_enable(c, False)
                     self.w(RETRY_SCRIPT, struct.pack(">I", start) + bytes(12))
                     self.w(CAMP_CMD, b"\x02")
                     self.last_retry = start
@@ -449,7 +467,8 @@ class GameState:
                 if done_at is None:
                     self.retry_pending = (start, clear, time.monotonic())
                 elif time.monotonic() - done_at > 1.0:
-                    self.set_func_enable(clear, False)
+                    for c in self.fight_clears(start):
+                        self.set_func_enable(c, False)
                     self.w(CAMP_CMD, b"\x03")
                     self.retry_pending = None
                     self.retry_time = time.monotonic()
@@ -475,10 +494,11 @@ class GameState:
         """In a loaded save for a few seconds (not on the title screen, loading or resetting)."""
         return self.game_since is not None and time.monotonic() - self.game_since >= wait
 
-    def apply_patches(self) -> None:
+    def apply_patches(self, slot_data: Optional[dict] = None) -> None:
         """Code patches. They only work if written before the game first runs that code (title screen)."""
         if self.patched:
             return
+        sd = slot_data or {}
         if self.in_game():
             self.say_once("late", "The client connected after the game was started. Some changes (rooms, Straw Hat "
                                   "locks) only work from the title screen: save, reset to the title screen and reload.")
@@ -515,6 +535,12 @@ class GameState:
             for i, x in enumerate(WS_CODE):
                 self.w32(WS_CODE_AT + i * 4, x)
             self.w32(WS_TABLE_ENTRY, WS_CODE_AT)
+        # Next Island menu follows the Log Pose items (vanilla until the client fills the table)
+        if self.u32(ISLAND_FUNC) == ISLAND_ORIG:
+            self.w(ISLAND_TABLE, bytes(8))
+            for i, x in enumerate(ISLAND_CODE):
+                self.w32(ISLAND_CODE_AT + i * 4, x)
+            self.w32(ISLAND_FUNC, 0x48000000 | ((ISLAND_CODE_AT - ISLAND_FUNC) & 0x3FFFFFC))
         # Instructions tabs follow the crafting rooms
         if self.u32(INSTR_FUNC) == INSTR_ORIG:
             for i, x in enumerate(INSTR_CODE):
@@ -540,6 +566,18 @@ class GameState:
                 self.w(GO_BYTE, b"\0\0\0")              # GO_BYTE, GO_REQ, CAMP_CMD
                 self.w(at, b"".join(struct.pack(">I", x) for x in gameover_code(at, site + 4, refresh)))
                 self.w32(site, 0x48000000 | ((at - site) & 0x3FFFFFC))
+        # 0.18.2: these went in only once a save had loaded (0.18.0 / 0.18.1), too late for code the game had
+        # already run (Dolphin's JIT keeps the old code): "An Idea!" still fired for Tone Dial / Mystery Gadget.
+        self.patch_recipe_discovery()
+        self.patch_item_flash()
+        self.patch_idea_popup()
+        self.patch_database_menu()
+        if int(sd.get("disable_food_diminishing_returns", 0)):
+            self.patch_food_returns()
+        if int(sd.get("traps_never_expire", 0)):
+            self.patch_traps()
+        if int(sd.get("fast_traps", 0)):
+            self.patch_fast_traps()
         self.patched = True
 
     def patched_before(self, a: int) -> bool:
@@ -603,6 +641,78 @@ class GameState:
             for a, _ in self.FOOD_DR_SITES:
                 self.w32(a, 0x38000000)
 
+    # Trap lifetime (docs/traps.md): 0x80047CE4 ticks each trap's catch timer (+0xB0) and lifetime (+0xB4). The
+    # lifetime running out destroys the trap, before or after the catch. The lifetime stores become nops and the
+    # two "lifetime > 0" branches always taken, so a trap always catches and waits until it's checked.
+    TRAP_SITES = [(0x80047E38, 0x901E00B4, 0x60000000), (0x80047E3C, 0x4181001C, 0x4800001C),
+                  (0x80047E80, 0x901E00B4, 0x60000000), (0x80047E84, 0x41810018, 0x48000018)]
+
+    def patch_traps(self) -> None:
+        if all(self.u32(a) == orig for a, orig, _ in self.TRAP_SITES):
+            for a, _, new in self.TRAP_SITES:
+                self.w32(a, new)
+
+    # Fast traps (docs/traps.md): the catch timer set at 0x800416B4/B8 (1,800,000 + rand % 1,200,000 ms) becomes a
+    # fixed 600,000 (10 min), and the leave-the-field cut in 0x80047CE4 (-10 min while above 20 min, never below
+    # 20 min; both use r5 = 1,200,000 from 0x80047DA0) uses 0 instead, so leaving the trap's field once finishes it.
+    FAST_TRAP_SITES = [(0x800416B4, 0x3CA5001B, 0x3CA00009), (0x800416B8, 0x38A57740, 0x38A527C0),
+                       (0x80047DA0, 0x38A34F80, 0x38A00000)]
+
+    # "An Idea!" recipe discovery (0x800F5B54, called only from 0x800F6DF8): when an item is obtained, a recipe
+    # whose ingredients are all in the bag and whose state lacks 0x04 is discovered with a popup. The client
+    # lists recipes itself, so discovery is switched off: the call returns 0xFF ("nothing found"). Key items
+    # (Mystery Gadget, Tone Dial...) still set it off with Arts discovery on (user, 2026-10-23), most likely
+    # when they arrive before the client re-marks the rows.
+    DISCOVERY_CALL, DISCOVERY_ORIG, DISCOVERY_NEW = 0x800F6DF8, 0x4BFFED5D, 0x386000FF
+
+    # The second way in (0.18.2): 0x800F7054(objs, mode, item, ...) mode 3 = "item obtained". It has hard-coded
+    # discoveries for items 2, 4, 6, 7, 166, 168, 170 and, for key items (0x800F8BD0(item) == 1: Tone Dial,
+    # Mystery Gadget...), discovers every recipe using the item (ori 5 + popup at 0x800F7914). The mode 3 branch
+    # (0x800F70C8 b 0x800F71C8) now goes straight to the function's exit (0x800F79F0).
+    ITEM_DISCOVERY, ITEM_DISCOVERY_ORIG, ITEM_DISCOVERY_NEW = 0x800F70C8, 0x48000100, 0x48000928
+
+    def patch_recipe_discovery(self) -> None:
+        if self.u32(self.DISCOVERY_CALL) == self.DISCOVERY_ORIG:
+            self.w32(self.DISCOVERY_CALL, self.DISCOVERY_NEW)
+        if self.u32(self.ITEM_DISCOVERY) == self.ITEM_DISCOVERY_ORIG:
+            self.w32(self.ITEM_DISCOVERY, self.ITEM_DISCOVERY_NEW)
+        # Third way in (0.18.3): 0x800417B8(chara mgr, item) lists the recipe that makes the item and fires the
+        # popup (0x800F5CE0). Called by the script natives ItemFlash / ItemFlashOpen (item pick-ups, chests) and
+        # the new-game setup. Location chests give the Archipelago Item (86), which is also the result of the
+        # placeholder recipes, so opening e.g. the Tone Dial / Mystery Gadget chest "discovered" one of them and the
+        # popup crashed on it. Now returns 0 straight away (li r3,0 / blr).
+        # Two words, so only at the title screen (apply_patches), never while the game may be running it.
+
+    # Fourth (0.18.4, the actual "An Idea!" from the user's reports): key items like the Tone Dial start an item
+    # event (scripts 351-5xx: dialogue, then ItemFlashOpen(IdxToID(n))). The natives ItemFlashOpen (0x800AA850)
+    # and ItemEventRunFlash (0x800BE4DC) call 0x80044DFC(chara mgr, item), which starts the "An Idea!" popup task
+    # (0x80007B30, callback 0x80044E64) for the recipe that makes the item; for a recipe the client turned into an
+    # Archipelago Item recipe it reads a null pointer. Both calls become nops (the dialogue still plays).
+    IDEA_CALLS = [(0x800AA8DC, 0x4BF9A521), (0x800BE57C, 0x4BF86881)]
+
+    def patch_idea_popup(self) -> None:
+        for a, orig in self.IDEA_CALLS:
+            if self.u32(a) == orig:
+                self.w32(a, NOP)
+
+    def patch_item_flash(self) -> None:
+        if self.u32(self.FLASH_FUNC) == self.FLASH_ORIG and not self.in_game():
+            self.w32(self.FLASH_FUNC + 4, 0x4E800020)
+            self.w32(self.FLASH_FUNC, 0x38600000)
+
+    FLASH_FUNC, FLASH_ORIG = 0x800417B8, 0x9421FFD0
+
+    def discovery_patch_state(self) -> str:
+        return (f"ingredient {self.u32(self.DISCOVERY_CALL) == self.DISCOVERY_NEW}, "
+                f"item {self.u32(self.ITEM_DISCOVERY) == self.ITEM_DISCOVERY_NEW}, "
+                f"flash {self.u32(self.FLASH_FUNC) == 0x38600000}, "
+                f"popup {all(self.u32(a) == NOP for a, _ in self.IDEA_CALLS)}")
+
+    def patch_fast_traps(self) -> None:
+        if all(self.u32(a) == orig for a, orig, _ in self.FAST_TRAP_SITES):
+            for a, _, new in self.FAST_TRAP_SITES:
+                self.w32(a, new)
+
     def reset_food_returns(self) -> None:
         """Food diminishing returns (user, 2026-10-20): character object + 0x1100 + (food id - 140) is a per-food
         byte that lowers the next stat gain; setting it to 0 gives the full gain again. (+0x1124 + 4 * (id - 140)
@@ -654,7 +764,7 @@ class GameState:
 
     # ------------------------------------------------------------------ RAM scans (tables loaded per stage)
     def _scan(self) -> Dict[str, List[int]]:
-        found: Dict[str, List[int]] = {"enemy": []}
+        found: Dict[str, List[int]] = {"enemy": [], "gen_item": []}
         lvl = {c: bytes.fromhex(h) for c, h in LVL_TABLES.items()}
         abil = {c: bytes.fromhex(h) for c, h in ABILITY_EXP.items()}
         for c in CHAR_NAMES:
@@ -688,6 +798,14 @@ class GameState:
                     nrows, doff, rs = (struct.unpack_from(">H", data, i + o)[0] for o in (6, 10, 12))
                     if rs == 40:
                         found["enemy"].append((start + i + doff, nrows, start + i))
+                i = data.find(b"ALTB", i + 4)
+            i = data.find(b"ALTB")
+            while i != -1:      # the generated-items table: 103 rows of 300 bytes at +0x10, Map 10 in row 96
+                if i + 16 <= len(data) and struct.unpack_from(">HHHH", data, i + 6) == (GEN_ITEM_ROWS, 0, GEN_ITEM_OFF,
+                                                                                          GEN_ITEM_ROW):
+                    row = i + GEN_ITEM_OFF + GEN_ITEM_MAP_ROWS[0] * GEN_ITEM_ROW + GEN_ITEM_VACUUM * 12
+                    if row + 4 <= len(data) and struct.unpack_from(">I", data, row)[0] in FRAGMENT_ITEMS | set(ORB_ITEMS):
+                        found["gen_item"].append(start + i + GEN_ITEM_OFF)
                 i = data.find(b"ALTB", i + 4)
         return found
 
@@ -735,6 +853,9 @@ class GameState:
                         return False
             for _, _, header in self.scan_cache.get("enemy", []):
                 if self.rd(header, 4) != b"ALTB":
+                    return False
+            for base in self.scan_cache.get("gen_item", []):
+                if self.rd(base - GEN_ITEM_OFF, 4) != b"ALTB":
                     return False
             for key, addrs in self.live_tables().items():
                 if not set(addrs) <= set(self.scan_cache.get(key, [])):
@@ -1051,22 +1172,40 @@ class GameState:
             code[i] = kind | (((lab[label] - i) * 4) & (0x3FFFFFC if kind == 0x48000000 else 0xFFFC))
         return code
 
-    def strip_fragment_drops(self) -> None:
-        """No treasure map fragment drops (kills, steals, Break Rush). Checked every poll: the enemy
-        table is reloaded with stage changes, sometimes at the same address."""
+    def set_blue_orb_spot(self, item: int) -> None:
+        """The repeatable dig spot by the Thousand Sunny (fobj_param row 96 land_shineA_type2 -> item row 71,
+        Pickaxe columns 14 / 17 = Blue Orb) gives this item instead (70 = Pure Iron Ore; 81 = vanilla)."""
+        for base in self.scan_cache.get("gen_item", []):
+            if self.rd(base - GEN_ITEM_OFF, 4) != b"ALTB":
+                continue
+            for col in (14, 17):
+                a = base + 71 * GEN_ITEM_ROW + col * 12
+                if self.u32(a) in (81, 70) and self.u32(a) != item:
+                    self.w32(a, item)
+
+    def strip_fragment_drops(self, vacuum_orbs: List[int]) -> None:
+        """Treasure map fragment drops (kills, steals, Break Rush) become Gold Orbs with the same count and
+        chance (0.18.0, user 2026-10-23; before: no drop). Orbs aren't one-of-a-kind items like the fragments
+        (flagFlagOnlyItem 0, carry up to 10), so they can be farmed. Checked every poll: the enemy table is
+        reloaded with stage changes, sometimes at the same address.
+        Also the Thousand Sunny's dust spots (field/fobj_gen_item_table.atb rows 96-100, Vacuum column 22 =
+        Map 10 fragments 1-5) give the seed's Orbs instead."""
         for base, nrows, header in self.scan_cache.get("enemy", []):
             if self.rd(header, 4) != b"ALTB" or not 0 < nrows <= 512:
                 continue
             data = self.rd(base, nrows * 40)
             for r in range(nrows):
-                d0, d1 = struct.unpack_from(">2I", data, r * 40 + 24)
-                a = base + r * 40
-                if d1 in FRAGMENT_ITEMS:
-                    self.w32(a + 28, 0 if d0 in FRAGMENT_ITEMS else d0)
-                    self.w(a + 38, b"\0\0")       # rare drop chance 0
-                if d0 in FRAGMENT_ITEMS:
-                    self.w32(a + 24, 0)
-                    self.w(a + 36, b"\0\0")
+                for k in range(2):
+                    if struct.unpack_from(">I", data, r * 40 + 24 + 4 * k)[0] in FRAGMENT_ITEMS:
+                        self.w32(base + r * 40 + 24 + 4 * k, GOLD_ORB)
+        for base in self.scan_cache.get("gen_item", []):
+            if self.rd(base - GEN_ITEM_OFF, 4) != b"ALTB":
+                continue
+            for i, row in enumerate(GEN_ITEM_MAP_ROWS):
+                a = base + row * GEN_ITEM_ROW + GEN_ITEM_VACUUM * 12
+                cur = self.u32(a)
+                if cur in FRAGMENT_ITEMS and i < len(vacuum_orbs):
+                    self.w32(a, vacuum_orbs[i])
 
     # ------------------------------------------------------------------ items: bag / found bits
     def _player_items(self) -> Optional[int]:
@@ -1121,6 +1260,36 @@ class GameState:
     def item_count(self, item: int) -> int:
         """How many of an item the player carries (bag, palette and Storage)."""
         return sum(self.rd(a + 4, 1)[0] for a in self.find_slots(item))
+
+    # Database (encyclopedia) books: [ITEM_MGR_PTR] + 0x16C / + 0x170 (book types 0 / 1, found by item param
+    # +285). Book: +0 type, +4 entry count, +8 -> entries of 12 bytes: +0 u32 best size (0 = never caught), +4 u32
+    # item id, +8 u16 flags (|= 0xA000 when a record is set, 0x800F3824). Saved as ItemPicb0 / ItemPicb1.
+    def database_caught(self) -> Optional[Set[int]]:
+        m = self.u32(ITEM_MGR_PTR)
+        if not valid(m):
+            return None
+        out: Set[int] = set()
+        for off in (0x16C, 0x170):
+            b = self.u32(m + off)
+            if not valid(b):
+                return None
+            n, e = self.u32(b + 4), self.u32(b + 8)
+            if not valid(e) or not 0 < n <= 64:
+                return None
+            raw = self.rd(e, n * 12)
+            for i in range(n):
+                size, item, flags = struct.unpack_from(">IIH", raw, i * 12)
+                if size or flags & 0x2000:
+                    out.add(item)
+        return out
+
+    # The Database menu entry (camp menu case 5 -> 0x801F47C4(4)) needs chapter > 3 (vanilla: after Gecko Moria,
+    # with the girls' room). "ble" after the chapter compare becomes a nop: open from the start.
+    DATABASE_SITE, DATABASE_ORIG = 0x801F4858, 0x4081002C
+
+    def patch_database_menu(self) -> None:
+        if self.u32(self.DATABASE_SITE) == self.DATABASE_ORIG:
+            self.w32(self.DATABASE_SITE, NOP)
 
     def found(self, item: int) -> bool:
         m = self._item_mgr()
@@ -1200,11 +1369,13 @@ class GameState:
             self.w(g + 0xC, struct.pack(">6h", *(min(c, m) for c, m in zip(cur, want))))
 
     def _shrines(self) -> Iterable[Tuple[int, int, int]]:
-        """(shrine id, row address, state byte address) for zones 0-1."""
+        """(shrine id, row address, state byte address). Rows per zone from event/epoint/zone0-5.bin: Sunny 1,
+        Wooded Isle 7, Gorge Isle 8, Island 3 6, Island 4 4, Central Isle 1. (0.17.x only read zones 0-1, so the
+        Gorge Isle shrines / build sites were never locked or checked; user 2026-10-23.)"""
         m = self.u32(SHRINE_MGR_PTR)
         if not valid(m):
             return
-        for z, rows in ((0, 1), (1, 7)):
+        for z, rows in enumerate((1, 7, 8, 6, 4, 1)):
             t = self.u32(m + 0x18 + z * 4)
             if not valid(t):
                 continue
@@ -1214,7 +1385,7 @@ class GameState:
 
     def set_shrine_locks(self, unlocked: Set[int]) -> None:
         for sid, row, _ in self._shrines():
-            if sid not in SHRINE_COSTS or sid == 1010:
+            if sid not in SHRINE_COSTS:
                 continue
             cost = SHRINE_COSTS[sid] if sid in unlocked else [SHRINE_LOCKED] * 7
             b = struct.pack(">7H", *cost)
@@ -1247,6 +1418,18 @@ class GameState:
         same_seed = self.u32(d + DELIVERED_OFFSET - 4) == self.seed_tag
         return (v >> 16 == DELIVERED_MARK and same_seed, v & 0xFFFF)
 
+    def save_owner(self) -> Optional[str]:
+        """Whose save is loaded: "this" (our marker + this seed's tag), "other" (marker of another seed / slot),
+        "fresh" (no marker, no progress: a new game), "foreign" (no marker but progress: a save never played with
+        this client, e.g. a vanilla save). None while the data isn't there."""
+        d = self._section(DELIVERED_SECTION)
+        if not d:
+            return None
+        v = self.u32(d + DELIVERED_OFFSET)
+        if v >> 16 == DELIVERED_MARK:
+            return "this" if self.u32(d + DELIVERED_OFFSET - 4) == self.seed_tag else "other"
+        return "foreign" if self.script_flags([11011, 11251, 11990]) else "fresh"
+
     def write_delivered(self, n: int) -> None:
         d = self._section(DELIVERED_SECTION)
         if d:
@@ -1265,6 +1448,12 @@ class GameState:
                 return start, clear
         return None
 
+    def fight_clears(self, start: int) -> List[int]:
+        """Clear scripts of a fight that haven't run yet (Kuro / Krieg share one start script)."""
+        clears = [c for st, c in FIGHTS if st == start]
+        done = self.script_flags(clears)
+        return [c for c in clears if c not in done]
+
     def func_enabled(self, n: int) -> bool:
         d = self._section("EventFuncEnableFlag")
         return bool(d) and bool(self.u32(d + (n >> 5) * 4) >> (n & 31) & 1)
@@ -1273,7 +1462,7 @@ class GameState:
         m = self.chara_mgr()
         flags = self.script_flags([n for pair in FIGHTS for n in pair])
         fights = " ".join(f"{a}:{int(a in flags)}/{b}:{int(b in flags)}/arm{int(self.func_enabled(b))}"
-                          for a, b in FIGHTS if a < 12000) or "none"
+                          for a, b in FIGHTS if a < 13000) or "none"
         return (f"mgr+0x78 {self.u32(m + 0x78) if m else 0:08X}; camp menu {self.u32(m + 0x30C) if m else 0:08X}; "
                 f"Game Over bytes {self.rd(GO_BYTE, 3).hex()}; fight flags {fights}")
 
@@ -1287,8 +1476,12 @@ class GameState:
         if nv != v:
             self.w32(a, nv & 0xFFFFFFFF)
 
-    def script_flags(self, flags: Iterable[int]) -> Set[int]:
-        d = self._section("EventScriptEndFlag")
+    def func_flags(self, flags: Iterable[int]) -> Set[int]:
+        """EventFuncEndFlag bits (field functions that have fired; the script itself may still be running)."""
+        return self.script_flags(flags, "EventFuncEndFlag")
+
+    def script_flags(self, flags: Iterable[int], section: str = "EventScriptEndFlag") -> Set[int]:
+        d = self._section(section)
         if not d:
             return set()
         out = set()
@@ -1336,6 +1529,21 @@ class GameState:
         return out
 
     # ------------------------------------------------------------------ placeholder item and recipes
+    # Item table rows (0x224 bytes, item_src.<lang>.atb): +0x125..+0x12A Energy given to Gabri, one byte each
+    # (element0-5; element5 = Gold: Gold Orb 100). Iron Scrap (73) = 15 / 0 / 0 / 0 / 25 / 0.
+    IRON_SCRAP, ELEMENT_GOLD = 73, 0x12A
+
+    def set_iron_scrap_gold(self, on: bool) -> None:
+        t = self.u32(ITEM_NAMES_PTR)
+        if not valid(t):
+            return
+        row = t + self.IRON_SCRAP * 0x224
+        if struct.unpack(">H", self.rd(row + 0x42, 2))[0] != self.IRON_SCRAP:
+            return
+        want = 10 if on else 0
+        if self.rd(row + self.ELEMENT_GOLD, 1)[0] != want:
+            self.w(row + self.ELEMENT_GOLD, bytes([want]))
+
     def rename_placeholder(self) -> None:
         t = self.u32(ITEM_NAMES_PTR)
         if not valid(t):
@@ -1361,6 +1569,20 @@ class GameState:
         p = self.u32(RECIPE_ROWS + ROOM_INDEX[room] * 4)
         return p + row * 252 if valid(p) else None
 
+    def clear_idea_callbacks(self) -> None:
+        """The "An Idea!" popup is a callback in each recipe object (+0x34 function, +0x38 argument), called only
+        when it isn't null (0x800F5D5C, 0x800F7148, ...) after a recipe gets listed. There are several discovery
+        paths (item obtained, ingredient check, script natives ItemFlash / ItemFlashOpen -> 0x800417B8), so the
+        callback itself is cleared (0.18.3, user: Tone Dial / Mystery Gadget still crashed with 0.18.2). Data,
+        not code: works at any time. The client re-applies the Art veil on the next pass."""
+        m = self.u32(ITEM_MGR_PTR)
+        if not valid(m):
+            return
+        for i in range(4):
+            o = self.u32(m + i * 4)
+            if valid(o) and valid(self.u32(o + 0x28)) and self.u32(o + 0x34):
+                self.w32(o + 0x34, 0)
+
     def setup_recipes(self, comments: Dict[Tuple[str, int], str], hidden: Set[Tuple[str, int]] = frozenset(),
                       veiled: Set[Tuple[str, int]] = frozenset()) -> None:
         """Every recipe listed + discovered (no recipe chains), key-item recipes give the placeholder for good,
@@ -1378,7 +1600,7 @@ class GameState:
                 # (0x800F5B54 skips those when an obtained item could discover a recipe), 0x08 made.
                 if (room, r) in hidden:
                     if not new[r] & 0x08:
-                        new[r] &= ~0x05 & 0xFF            # undiscovered: the game can discover it ("An Idea!")
+                        new[r] = (new[r] | 0x04) & ~0x01 & 0xFF   # not listed yet (listed once it's unhidden)
                 elif (room, r) in veiled:
                     if not new[r] & 0x08:
                         # shown as ????? but marked as already had: the game's own "An Idea!" popup must not fire
@@ -1426,6 +1648,22 @@ class GameState:
                 if st[r] & 0x08:
                     out.add((room, r))
         return out
+
+    def set_islands(self, open_: Dict[int, bool]) -> None:
+        """Next Island menu: island n (1 Wooded .. 5 Central) selectable; byte 0 = the menu entry."""
+        if self.u32(ISLAND_FUNC) >> 26 != 18:
+            return
+        t = bytearray(8)
+        for n, ok in open_.items():
+            t[n] = 1 if ok else 0
+        t[0] = 1 if any(t[n] for n in range(2, 6)) else 0
+        if self.rd(ISLAND_TABLE, 8) != bytes(t):
+            self.w(ISLAND_TABLE, bytes(t))
+
+    def game_cleared(self) -> bool:
+        """GameIsClear: [0x8068A298] + 6, set by GameClear() at the end of the final boss (script 15030)."""
+        ro = self.u32(RESET_OBJ_PTR)
+        return valid(ro) and self.rd(ro + 6, 1)[0] != 0
 
     def chapter(self) -> int:
         """Story chapter (island bosses beaten + 2), [0x8068A298] + 0x10; 0 if not readable."""

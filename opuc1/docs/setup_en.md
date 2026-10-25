@@ -22,8 +22,10 @@
 3. Start the game and stay **at the title screen**.
 4. Open "One Piece Unlimited Cruise 1 Client" from the Archipelago Launcher and connect to the server.
    Several game patches only work when they go in before the game first uses that code, so connect before
-   loading a save. The client warns you if it was started too late.
-5. Start a new game (or load a save from this seed). Keep the client open while playing.
+   loading a save. If a save was already loaded when the client connected, the client sends no checks and gives
+   no items for it: reset to the title screen and load the save again.
+5. Start a new game (or load a save from this seed). Keep the client open while playing. A save from another
+   seed, or one never played with the client, is ignored (no checks sent, no items given).
 
 The client's "Armed Items" tab lists received items it is still holding back, and why (for example the Pickaxe
 until you reach the Thousand Sunny, or items waiting for room in your bag).

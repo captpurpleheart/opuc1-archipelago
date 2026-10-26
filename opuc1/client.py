@@ -52,6 +52,9 @@ SHRINE_LOCS = {c[1]: lid for lid, c in CHECKS_BY_KIND.get("shrine", [])}
 CRAFT_LOCS = {(c[1], c[2]): lid for lid, c in CHECKS_BY_KIND.get("craft", [])}
 COOP_LOCS = [(lid, c[1], c[2]) for lid, c in CHECKS_BY_KIND.get("coop", [])]
 MAP_FRAGMENTS = {d.name for d in ITEMS if d.name.startswith("Map ") and ", Fragment " in d.name}
+# Tools that the game replaces when they're upgraded at the Workshop: crafting the Bug-Catcher Net uses up the Broken
+# net (and its "ever obtained" bit), so the client must not give the Broken net again (0.19.7).
+SUPERSEDED_BY = {3: (2,)}
 SUNNY_FLAG = 11990          # "First Step on the Thousand Sunny": the Pickaxe is held back until then
 MOVE_LOCS = [(lid, c[1], c[2], c[3]) for lid, c in CHECKS_BY_KIND.get("move", [])]
 CATCH_LOCS = {c[1]: lid for lid, c in CHECKS_BY_KIND.get("catch", [])}     # fish / creature item -> location
@@ -451,6 +454,8 @@ def deliver(ctx: "OPUCContext", g: "GameState", key_items: List[int]) -> None:
     if not g.hook_active():
         return
     for gid in key_items:
+        if any(g.found(u) or g.find_slots(u) for u in SUPERSEDED_BY.get(gid, ())):
+            continue                                # already upgraded in game (e.g. net crafted): don't give it back
         if not g.found(gid) and gid not in ctx.keys_requested:
             ctx.keys_requested.add(gid)
             g.request_give(gid)

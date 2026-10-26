@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.7
+- Fixed the Broken Bug-Catcher Net coming back after crafting the Bug-Catcher Net. Client-side fix: seeds from
+  0.19.6 keep working, just replace the apworld.
+
 ## ALPHA Build v0.19.6 - "The Gorge Isle Scope"
 
 The Gorge Isle is here, and with it, a mountain of changes, features and fixes!

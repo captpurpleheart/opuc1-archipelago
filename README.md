@@ -6,7 +6,7 @@ Treasure Beneath the Waves** (Wii, PAL `ROUPAF`).
 > **Alpha.** This release covers the **Thousand Sunny, Island 1 (Wooded Isle), Island 2 (Gorge Isle) and the final
 > island (Central Isle)**. Islands 3 and 4 are planned. Please report bugs!
 >
-> Latest: **0.19.6 "The Gorge Isle Scope"** - see [CHANGELOG.md](CHANGELOG.md).
+> Latest: **0.19.7** (0.19.6 "The Gorge Isle Scope" + fixes) - see [CHANGELOG.md](CHANGELOG.md).
 
 ## What's randomized
 

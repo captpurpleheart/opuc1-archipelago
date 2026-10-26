@@ -1,9 +1,12 @@
 # Changelog
 
+## 0.19.9
+- Removed the 0.19.8 "put the missing Bug-Catcher Net back" safeguard: it could give a second net. The tool upgrade
+  fix from 0.19.8 stays. A spare net from 0.19.8 is harmless and can be discarded.
+
 ## 0.19.8
 - Fixed the real cause of the Bug-Catcher Net issue: crafting the net (and other tool upgrades, like the Power Vacuum
-  Cleaner) didn't swap out the old tool, so the Broken net stayed and the net went missing. If the net was already
-  crafted but is missing, the client puts it back in your bag. Client-side fix: 0.19.6 / 0.19.7 seeds keep working.
+  Cleaner) didn't swap out the old tool, so the Broken net stayed and the net went missing. Client-side fix: 0.19.6 / 0.19.7 seeds keep working.
 
 ## 0.19.7
 - Fixed the Broken Bug-Catcher Net coming back after crafting the Bug-Catcher Net. Client-side fix: seeds from

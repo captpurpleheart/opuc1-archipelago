@@ -665,15 +665,21 @@ class GameState:
     # when they arrive before the client re-marks the rows.
     DISCOVERY_CALL, DISCOVERY_ORIG, DISCOVERY_NEW = 0x800F6DF8, 0x4BFFED5D, 0x386000FF
 
-    # The second way in (0.18.2): 0x800F7054(objs, mode, item, ...) mode 3 = "item obtained". It has hard-coded
-    # discoveries for items 2, 4, 6, 7, 166, 168, 170 and, for key items (0x800F8BD0(item) == 1: Tone Dial,
-    # Mystery Gadget...), discovers every recipe using the item (ori 5 + popup at 0x800F7914). The mode 3 branch
-    # (0x800F70C8 b 0x800F71C8) now goes straight to the function's exit (0x800F79F0).
-    ITEM_DISCOVERY, ITEM_DISCOVERY_ORIG, ITEM_DISCOVERY_NEW = 0x800F70C8, 0x48000100, 0x48000928
+    # The second way in (0.18.2): 0x800F7054(objs, mode, item, ...) mode 3 = "item obtained". Its hard-coded cases
+    # replace the old tool when the new one arrives (0x800F6EA4: Bug-Catcher Net 2 -> Broken net 3 goes, Power Vacuum
+    # 7 -> Vacuum 8, rods / bag / palette upgrades), then all fall through to the default case 0x800F7874: for key
+    # items (0x800F8BD0(item) == 1: Tone Dial, Mystery Gadget...) it discovers every recipe using the item with the
+    # popup (ori 5 at 0x800F7914). 0.18.2 skipped the whole of mode 3, which also stopped the tool replacement
+    # (user: Broken net kept, no net after crafting it). Now only the default case exits (0x800F7874 -> b 0x800F79F0);
+    # the old patch at 0x800F70C8 is undone if it's still in memory.
+    ITEM_DISCOVERY, ITEM_DISCOVERY_ORIG, ITEM_DISCOVERY_NEW = 0x800F7874, 0x7F83E378, 0x4800017C
+    OLD_ITEM_PATCH, OLD_ITEM_ORIG, OLD_ITEM_NEW = 0x800F70C8, 0x48000100, 0x48000928
 
     def patch_recipe_discovery(self) -> None:
         if self.u32(self.DISCOVERY_CALL) == self.DISCOVERY_ORIG:
             self.w32(self.DISCOVERY_CALL, self.DISCOVERY_NEW)
+        if self.u32(self.OLD_ITEM_PATCH) == self.OLD_ITEM_NEW:
+            self.w32(self.OLD_ITEM_PATCH, self.OLD_ITEM_ORIG)
         if self.u32(self.ITEM_DISCOVERY) == self.ITEM_DISCOVERY_ORIG:
             self.w32(self.ITEM_DISCOVERY, self.ITEM_DISCOVERY_NEW)
         # Third way in (0.18.3): 0x800417B8(chara mgr, item) lists the recipe that makes the item and fires the

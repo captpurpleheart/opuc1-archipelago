@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.8
+- Fixed the real cause of the Bug-Catcher Net issue: crafting the net (and other tool upgrades, like the Power Vacuum
+  Cleaner) didn't swap out the old tool, so the Broken net stayed and the net went missing. If the net was already
+  crafted but is missing, the client puts it back in your bag. Client-side fix: 0.19.6 / 0.19.7 seeds keep working.
+
 ## 0.19.7
 - Fixed the Broken Bug-Catcher Net coming back after crafting the Bug-Catcher Net. Client-side fix: seeds from
   0.19.6 keep working, just replace the apworld.

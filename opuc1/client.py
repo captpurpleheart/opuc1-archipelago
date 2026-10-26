@@ -113,6 +113,7 @@ class OPUCContext(CommonContext):
         self.comments: Dict[Tuple[str, int], str] = {}
         self.sent: Set[int] = set()
         self.goal_sent = False
+        self.net_restored = False
         self.last_seen: Set[int] = set()
         self.owner_session = -1             # game session whose save owner was checked
         self.late_session = None            # session that was already running when the client connected
@@ -391,6 +392,14 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
             g.patch_fast_traps()        # 10 min catch, leaving the field once finishes it
         g.write_exp(1 + int(ctx.slot_data.get("move_exp_multiplier", 0)))   # 0 off, 1 = 2x, 2 = 3x
 
+    # Bug-Catcher Net lost to the 0.18.2 - 0.20.4 / 0.19.6 - 0.19.7 recipe-discovery patch (crafting it no longer
+    # swapped out the Broken net and the net went missing): once per session, if the net recipe has been made but
+    # there's no net in the bag, palette or Storage, put one back.
+    if g.settled() and have["Broken Bug-Catcher Net"] and not ctx.net_restored and not g.find_slots(2) \
+            and ("workshop", 1) in g.crafted():
+        ctx.net_restored = True
+        if g.add_to_bag(2):
+            logger.info("The Bug-Catcher Net was crafted but is missing: it has been put back in your bag.")
     deliver(ctx, g, key_items)
 
 

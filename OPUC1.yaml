@@ -6,78 +6,95 @@ game: One Piece Unlimited Cruise 1
 description: One Piece Unlimited Cruise 1
 
 One Piece Unlimited Cruise 1:
-  # ---- General -----------------------------------------------------
+  # ---- Game Options ------------------------------------------------------
   # Starting Character: The Straw Hat you start with. The others are items. "random" picks one.
   # Options: luffy, zoro, usopp, sanji, nami, chopper, robin, franky, brook
   starting_character: luffy
 
-  # Goal: Which boss ends the game. The goal also decides which islands are in the seed. god_eneru:
-  # "God" Eneru on the Wooded Isle (Island 1 only). gecko_moria: Gecko Moria on the Gorge Isle (Islands
-  # 1 and 2). doom_guardian: the Doom Guardian on Central Isle, behind The Final Door (Islands 1, 2 and
-  # the final island; Islands 3 and 4 aren't in the world yet). Islands other than the Wooded Isle open
-  # with their island item.
-  # Options: god_eneru, gecko_moria, doom_guardian
+  # Goal: Which boss ends the game. Every island (Wooded Isle, Gorge Isle, Iceberg Isle and Central
+  # Isle) and its bosses are in every seed; islands other than the Wooded Isle open with their island
+  # item. god_eneru: "God" Eneru on the Wooded Isle. gecko_moria: Gecko Moria on the Gorge Isle. aokiji:
+  # Aokiji on the Iceberg Isle. doom_guardian: the Doom Guardian on Central Isle, behind The Final Door.
+  # With any goal but doom_guardian, the Doom Guardian fight is left out (no "The Final Door" item).
+  # Options: god_eneru, gecko_moria, aokiji, doom_guardian
   goal: doom_guardian
 
-  # ---- Item Options ------------------------------------------------
-  # Combine Fishing Rod and Line Levels: No Rod Line items: each Rod Level item also raises the line
-  # level by the same step (with 6 items of each, one Rod Level item = +5 rod and +5 line). Off: Rod
-  # Level and Rod Line items are separate.
+  # Death Link: When any Straw Hat is defeated, everyone else in the multiworld with Death Link on dies
+  # too. When someone else dies, the Straw Hat you're controlling takes a fatal hit (the next crew
+  # member takes over as usual; a full party wipe still sends you back to the Thousand Sunny).
   # true / false
-  combine_rod_and_line: false
+  death_link: false
 
-  # Rod Upgrade Items: How many Rod Level and Rod Line upgrade items there are (of each). 30: every item
-  # is one level. 6: every item is five levels. 4: Rod: Fishing Rod max -> Whopper -> Sea King -> MAX.
-  # Line: levels 8, 16, 23, 30.
-  # Options: 4, 6, 30
-  rod_upgrade_items: 30
-
-  # Treasure Maps Need Every Fragment: A treasure map's fragments are only given once every fragment of
-  # that map has been received, so its chest can't be dug up until the whole map is found (vanilla: any
-  # one fragment is enough).
+  # Falling Causes a Death Link: With Death Link on: falling into the abyss or deep water also sends a
+  # death (it only costs some HP in game). Off: only a Straw Hat dying sends one. Does nothing without
+  # Death Link.
   # true / false
-  treasure_maps_need_every_fragment: false
+  falling_death_link: true
 
-  # Disable Diminishing Returns for Food: Feeding a Straw Hat the same food again always gives its full
-  # stat gain (vanilla: the gain drops each time until it stops).
+  # ---- Item Options ------------------------------------------------------
+  # Early Pickaxe: The Pickaxe is placed early (in the first sphere of the multiworld).
   # true / false
-  disable_food_diminishing_returns: false
+  early_pickaxe: false
 
-  # Crafting Recipes Are Discovered Through Arts: Development / Cooking / Compounding recipes only show
-  # in their menu once the Art level needed to craft them has been received (rows need Art 0-3). Off:
-  # every recipe is shown from the start. Purely visual: a recipe can't be crafted before its Art level
-  # either way.
+  # Early Bug-Catcher Net: The Broken Bug-Catcher Net is placed early (in the first sphere of the
+  # multiworld).
   # true / false
-  recipes_discovered_through_arts: true
+  early_bug_catcher_net: false
 
-  # Crafting Recipes Spoil Locations: Recipe descriptions say which item (and whose) the recipe's
-  # location holds. Off: they only say it holds an unclaimed Archipelago location.
+  # Early Fishing Rod: The Fishing Rod is placed early (in the first sphere of the multiworld).
   # true / false
-  recipes_spoil_locations: true
+  early_fishing_rod: false
 
-  # Iron Scrap give Gold Energy: Feeding Gabri an Iron Scrap also gives 10 Gold Energy (vanilla: 15
-  # Red, 25 Black, no Gold).
+  # Early Vacuum Cleaner: The first Progressive Vacuum Cleaner is placed early (in the first sphere of
+  # the multiworld).
   # true / false
-  iron_scrap_gives_gold_energy: true
+  early_vacuum_cleaner: false
 
-  # Blue Orb Dig Spot Gives Pure Iron Ore: The repeatable Blue Orb dig spot next to the Thousand Sunny
-  # gives Pure Iron Ore instead (the Wooded Isle Pure Iron Ore spots can only be dug once).
-  # true / false
-  blue_orb_spot_gives_iron_ore: true
+  # Early Bag Upgrade: Progressive Item Bag Upgrades placed early (in the first sphere of the
+  # multiworld). none: no early Bag Upgrade. only_one: the first one. both: both.
+  # Options: none, only_one, both
+  early_bag_upgrade: none
 
-  # Bag & Palette Upgrade Item Type: Whether "Progressive Item Bag Upgrade" and "Progressive Palette
+  # Progressive Bag & Palette Item Type: Whether "Progressive Item Bag Upgrade" and "Progressive Palette
   # Upgrade" are Useful or Progression items (progression here is progression that skips balancing).
   # Options: useful, progression
   bag_palette_upgrade_item_type: useful
 
-  # ---- Move & Skill Options ----------------------------------------
-  # Move EXP Multiplier: Moves gain levels faster: 2X or 3X move EXP (every per-level requirement
-  # divided by 2 or 3).
-  # Options: off, 2x, 3x
+  # Treasure Maps Require Every Fragment: A treasure map's fragments are only given once every fragment
+  # of that map has been received, so its chest can't be dug up until the whole map is found (vanilla:
+  # any one fragment is enough).
+  # true / false
+  treasure_maps_need_every_fragment: false
+
+  # Include Gunpowder Logic: Gunpowder counts as another way through rock paths (Wooded Isle Part 2
+  # right side, Iceberg Isle's ice rock routes, the chests and monument behind rock paths) and to blow
+  # open X dig spots (Clay, Marble, Pure Iron Ore). Random plain-ground digs and treasure map chests
+  # always need the Pickaxe. Off: only the Pickaxe is expected for any of these.
+  # true / false
+  include_gunpowder_logic: true
+
+  # Enemy Gunpowder Drop Logic: Whether Gunpowder from enemies counts for logic (compounding it at
+  # Chopper's Pharmacy always does). Does nothing without Include Gunpowder Logic. none: enemy Gunpowder
+  # is never expected. included: gunners in Gorge Isle Part 3 / Iceberg Isle Part 1 count as a source.
+  # whirlwind: they count only with Nami and her Whirlwind (to steal it consistently).
+  # Options: none, included, whirlwind
+  enemy_gunpowder_drop_logic: included
+
+  # Enemy Gunpowder Drop Rate: Chance (%) that the gunners (the enemies whose common drop is Gunpowder)
+  # drop Gunpowder when defeated, and that Nami's Whirlwind steals it from them (vanilla: 5% for Pirate
+  # and Agent gunners, 4% for Navy gunners; 5 is about vanilla). Cat Burglar multiplies the steal chance
+  # (Level 1 x3, Level 2 x4, Level 3 x5), up to 100%.
+  # Range: 5-100
+  enemy_gunpowder_drop_rate: 20
+
+  # ---- Characters, Moves & Skills Options --------------------------------
+  # Move EXP Multiplier: Moves gain levels faster: 2X to 5X move EXP (every per-level requirement
+  # divided by 2, 3, 4 or 5).
+  # Options: off, 2x, 3x, 4x, 5x
   move_exp_multiplier: off
 
-  # Super Move Locations: Level 2-5 of each super move and co-op move are locations. off: no super /
-  # co-op move locations. on: they can hold anything. unimportant: only useful items, filler or traps.
+  # Super Move Locations: Level 2-5 of each super move and co-op move are locations. off: no super / co-
+  # op move locations. on: they can hold anything. unimportant: only useful items, filler or traps.
   # (Standard move levels 2-5 are always locations and can always hold progression.)
   # Options: off, on, unimportant
   super_move_locations: unimportant
@@ -92,7 +109,17 @@ One Piece Unlimited Cruise 1:
   # Options: useful, progression
   light_weight_item_type: useful
 
-  # ---- Fishing & Bug-Catching Options ------------------------------
+  # Robin's Flower Flower Power Item Type: Whether "Robin - Progressive Flower Flower Power" is a Useful
+  # or Progression item (progression here is progression that skips balancing).
+  # Options: useful, progression
+  flower_power_item_type: useful
+
+  # Chopper & Brook Always Have Cold Resistance: Chopper and Brook always have Cold Resistance, as if
+  # they had used an Anti-Cold Cream (cold areas stop SP from regenerating for everyone else).
+  # true / false
+  chopper_brook_cold_resistance: true
+
+  # ---- Fishing & Bug-Catching Options ------------------------------------
   # Fishsanity: Catching each fish for the first time is a location. on: the locations can hold
   # anything. unimportant: only useful items, filler or traps.
   # Options: off, on, unimportant
@@ -105,37 +132,100 @@ One Piece Unlimited Cruise 1:
 
   # How Many Fish Locations: How many fish locations there are, picked at random from the fish catchable
   # in this world.
-  # Range: 1-15
-  fish_locations: 15
+  # Range: 1-17
+  fish_locations: 17
 
   # How Many Creature Locations: How many creature locations there are, picked at random from the
   # creatures catchable in this world.
-  # Range: 1-11
-  creature_locations: 11
+  # Range: 1-16
+  creature_locations: 16
 
-  # Sea Kings Are Important: Catching the Sea Kings (and crafting recipes that need Sea King catches or
-  # materials) can hold progression items. Off: those locations only get useful items, filler or traps.
+  # Combine Fishing Rod & Line Levels: No Rod Line items: each Rod Level item also raises the line level
+  # by the same step (with 6 items of each, one Rod Level item = +5 rod and +5 line). Off: Rod Level and
+  # Rod Line items are separate.
   # true / false
-  sea_kings_important: false
+  combine_rod_and_line: false
 
-  # Traps Never Expire: A set trap always catches something and keeps it until you check the trap
-  # (vanilla: a trap has a random lifetime of 30-50 minutes, and if it runs out before or after the
-  # catch, the trap is destroyed and the creatures are lost). How long the catch takes is set by Fast
-  # Traps.
+  # Number of Rod Upgrade Items: How many Rod Level and Rod Line upgrade items there are (of each). 30:
+  # every item is one level. 6: every item is five levels. 4: Rod: Fishing Rod max -> Whopper -> Sea
+  # King -> MAX. Line: levels 8, 16, 23, 30.
+  # Options: 30, 6, 4
+  rod_upgrade_items: '30'
+
+  # Equalise Fish Rates: Every fish that can bite at a fishing spot is equally likely (vanilla:
+  # weighted, e.g. Shining Saury twice as likely as a Shark off the Thousand Sunny). Which fish can bite
+  # still depends on how far the lure lands.
   # true / false
-  traps_never_expire: true
+  equalise_fish_rates: false
 
-  # Fast Traps: A set trap catches after 10 minutes of play, and leaving the trap's area once (another
-  # zone, or off the Thousand Sunny) finishes it straight away (vanilla: 30-50 minutes, and leaving the
-  # area takes 10 minutes off but never below 20). What the trap catches is still random.
+  # Better Traps: A set trap always catches something and keeps it until you check the trap, and catches
+  # after 10 minutes of play; leaving the trap's area once (another zone, or off the Thousand Sunny)
+  # finishes it straight away. What it catches is still random. (Vanilla: a trap has a random lifetime
+  # of 30-50 minutes and is destroyed with its catch when that runs out; the catch takes 30-50 minutes,
+  # and leaving the area takes 10 minutes off but never below 20.)
   # true / false
-  fast_traps: true
+  better_traps: true
 
-  # ---- Thousand Sunny & Crew Gating Options ------------------------
-  # Usopp's Workshop Unlock Condition: What opens Usopp's Workshop (crafting). vanilla: open from the
-  # start, no item. own_item: the "Usopp's Workshop" item. usopp: having Usopp in the crew, no item.
-  # own_item_and_usopp: the item and Usopp.
-  # Options: vanilla, own_item, usopp, own_item_and_usopp
+  # Guaranteed Creature Drops: Creatures caught with the Bug-Catcher Net always drop their item
+  # (vanilla: 25-60% for many of them, such as Royal Jelly from Honey Bees and Doctor Hornets, or
+  # Mystery Eggs from Seagulls).
+  # true / false
+  guaranteed_creature_drops: true
+
+  # Quick Recipes: Development, cooking and compounding recipes need only 1 of each fish or creature
+  # they use (e.g. Saury Full Course: 1 Shining Saury instead of 5; Special Item Bag: 1 Shark instead of
+  # 2). Sea King parts count too.
+  # true / false
+  quick_recipes: false
+
+  # ---- Quality of Life Options -------------------------------------------
+  # Crafting Recipes Are Discovered Through Arts: Development / Cooking / Compounding recipes only show
+  # in their menu once the Art level needed to craft them has been received (rows need Art 0-3). Off:
+  # every recipe is shown from the start. Purely visual: a recipe can't be crafted before its Art level
+  # either way.
+  # true / false
+  recipes_discovered_through_arts: true
+
+  # Crafting Recipes Spoil Locations: Recipe descriptions say which item (and whose) the recipe's
+  # location holds. Off: they only say it holds an unclaimed Archipelago location.
+  # true / false
+  recipes_spoil_locations: true
+
+  # Disable Diminishing Returns For Food: Feeding a Straw Hat the same food again always gives its full
+  # stat gain (vanilla: the gain drops each time until it stops).
+  # true / false
+  disable_food_diminishing_returns: false
+
+  # Iron Scrap Give Gold Energy: Feeding Gabri an Iron Scrap also gives 10 Gold Energy (vanilla: 15 Red,
+  # 25 Black, no Gold).
+  # true / false
+  iron_scrap_gives_gold_energy: true
+
+  # Wooded Isle Blue Orbs Digspots Give Pure Iron Ore: Every Blue Orb dig spot on the Wooded Isle gives
+  # Pure Iron Ore instead, including the repeatable one next to the Thousand Sunny (the Wooded Isle Pure
+  # Iron Ore spots can only be dug once).
+  # true / false
+  blue_orb_spot_gives_iron_ore: true
+
+  # Better Random Dig Item Rates: Digging plain ground with the Pickaxe (no dig spot) finds a random dig
+  # item (Clay, Handy Rock, or Ice Shard on snow / ice) 25% of the time instead of 5%. It's distance
+  # based, not timed: a dig only counts when it's far enough from the last one, so wandering around
+  # while digging is recommended.
+  # true / false
+  better_random_dig_item_rates: true
+
+  # Better Plant Drop Rates: Bitter Grass, Medicinal Herbs and Nectar drop more often from their plants
+  # (Bitter Grass / Medicinal Herbs / Nectar): normal hits 25% / 60% / 25% (vanilla 10% / 60% / 15%),
+  # slash hits 50% / 80% / 50% (vanilla as normal hits), Vacuum Cleaner 75% / 100% / 75% (vanilla 30% /
+  # 100% / 30%). The Pickaxe counts as a normal hit; fire still burns them to Ashes.
+  # true / false
+  better_plant_drop_rates: true
+
+  # ---- Thousand Sunny & Crew Gating Options ------------------------------
+  # Usopp's Workshop Unlock Condition: What opens Usopp's Workshop (crafting). start_with: open from the
+  # start, no item (like the base game). own_item: the "Usopp's Workshop" item. usopp: having Usopp in
+  # the crew, no item. own_item_and_usopp: the item and Usopp.
+  # Options: start_with, own_item, usopp, own_item_and_usopp
   workshop_unlock: own_item
 
   # Usopp Is Required for Art of Development: Art of Development levels are only given once Usopp has
@@ -144,10 +234,10 @@ One Piece Unlimited Cruise 1:
   usopp_required_for_art: false
 
   # Sanji's Kitchen Unlock Condition: What opens Sanji's Kitchen (cooking). vanilla: opens after the
-  # Island 1 boss (Eneru), like the base game; no item. With goal god_eneru that is after the goal, so
-  # the cooking locations are removed. own_item: the "Sanji's Kitchen" item. sanji: having Sanji in the
-  # crew, no item. own_item_and_sanji: the item and Sanji.
-  # Options: vanilla, own_item, sanji, own_item_and_sanji
+  # first island boss you beat, like the base game; no item. own_item: the "Sanji's Kitchen" item.
+  # sanji: having Sanji in the crew, no item. own_item_and_sanji: the item and Sanji. start_with: open
+  # from the start, no item.
+  # Options: vanilla, own_item, sanji, own_item_and_sanji, start_with
   kitchen_unlock: own_item
 
   # Sanji Is Required for Art of Cooking: Art of Cooking levels are only given once Sanji has joined the
@@ -156,10 +246,10 @@ One Piece Unlimited Cruise 1:
   sanji_required_for_art: false
 
   # Chopper's Pharmacy Unlock Condition: What opens Chopper's Pharmacy (compounding). vanilla: opens
-  # after the Island 1 boss (Eneru), like the base game; no item. With goal god_eneru that is after
-  # the goal, so the compounding locations are removed. own_item: the "Chopper's Pharmacy" item.
-  # chopper: having Tony Tony Chopper in the crew, no item. own_item_and_chopper: the item and Chopper.
-  # Options: vanilla, own_item, chopper, own_item_and_chopper
+  # after the first island boss you beat, like the base game; no item. own_item: the "Chopper's
+  # Pharmacy" item. chopper: having Tony Tony Chopper in the crew, no item. own_item_and_chopper: the
+  # item and Chopper. start_with: open from the start, no item.
+  # Options: vanilla, own_item, chopper, own_item_and_chopper, start_with
   pharmacy_unlock: own_item
 
   # Chopper Is Required for Art of Compounding: Art of Compounding levels are only given once Tony Tony
@@ -183,7 +273,29 @@ One Piece Unlimited Cruise 1:
   # true / false
   franky_required_for_build_sites: false
 
-  # ---- Filler Weighting Options ------------------------------------
+  # ---- Starting Costumes -------------------------------------------------
+  # Each Straw Hat's outfit at the start of the game. Costumes can be changed later on at the Thousand
+  # Sunny's wardrobes in the girls' dorm (open after Gecko Moria) once the Garment Box has been found.
+  # Luffy: unlimited, unlimited_hat_on, thriller_bark, thriller_bark_hat_on
+  luffy_starting_costume: unlimited
+  # Zoro: unlimited, unlimited_bandana_on, thriller_bark, thriller_bark_bandana_on
+  zoro_starting_costume: unlimited
+  # Usopp: unlimited, unlimited_goggles_on, thriller_bark, thriller_bark_hat_off
+  usopp_starting_costume: unlimited
+  # Sanji: unlimited, unlimited_glasses_on, thriller_bark, thriller_bark_glasses_on
+  sanji_starting_costume: unlimited
+  # Nami: unlimited, unlimited_hair_down, thriller_bark, thriller_bark_hair_down
+  nami_starting_costume: unlimited
+  # Chopper: unlimited, thriller_bark
+  chopper_starting_costume: unlimited
+  # Robin: unlimited, unlimited_hat_on, thriller_bark
+  robin_starting_costume: unlimited
+  # Franky: unlimited, unlimited_shades_on, thriller_bark, thriller_bark_shades_on
+  franky_starting_costume: unlimited
+  # Brook: unlimited, thriller_bark
+  brook_starting_costume: unlimited
+
+  # ---- Filler & Trap Weighting Options -----------------------------------
   # Items Are Weighted Based on Quality: Stronger food and medicine is rarer in the filler pool. Off:
   # every food / medicine / other item is equally likely within its group.
   # true / false
@@ -200,6 +312,13 @@ One Piece Unlimited Cruise 1:
   # true / false
   bundle_size_weighting: true
 
+  # Include Traps: Status traps are in the filler pool: Burn, Frozen, Poison, Paralysis, Sleep and Stun
+  # Trap. A trap hits the Straw Hat you're controlling with that status (no damage), like an enemy
+  # attack. Traps queue up and never play at the same time: the next one waits until the last one has
+  # worn off. How many there are is set by Trap Filler Weight.
+  # true / false
+  include_traps: false
+
   # Food Filler Weight: How much of the filler is food (relative to Medicine and Other Filler Weight).
   # 0: no food filler.
   # Range: 0-100
@@ -214,3 +333,8 @@ One Piece Unlimited Cruise 1:
   # to Food and Medicine Filler Weight). 0: none of them.
   # Range: 0-100
   other_filler_weight: 9
+
+  # Trap Filler Weight: How much of the filler is traps (relative to Food, Medicine and Other Filler
+  # Weight). Does nothing without Include Traps.
+  # Range: 0-100
+  trap_filler_weight: 10

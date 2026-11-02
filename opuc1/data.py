@@ -2,8 +2,8 @@
 One Piece Unlimited Cruise Part 1 (ROUPAF) - shared game data for the world and the client.
 No Archipelago imports here, so the client and tests can load it directly.
 
-Scope: Prologue, Thousand Sunny, Wooded Isle (Island 1) and Gorge Isle (Island 2).
-Goal (option): the Island 1 boss (Eneru, flag 11351) or the Island 2 boss (Gecko Moria, flag 12351).
+Scope: Prologue, Thousand Sunny, Wooded Isle (Island 1), Gorge Isle (Island 2), Iceberg Isle (Island 3) and
+Central Isle (final island). Every island is in every seed; the goal option only picks the boss that ends it.
 """
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
@@ -221,7 +221,9 @@ _add("Progressive Vacuum Cleaner", PROG, 2, "vacuum")           # 1: Vacuum (ite
 for _n, _gid in [("Steel Chain", 87), ("Enhanced Reel", 89), ("Ultimate Reel", 90), ("Mystery Gadget", 91),
                  ("Garment Box", 92), ("Vision Dial", 93), ("Tone Dial", 94), ("Mask Fragment", 96)]:
     # Garment Box opens no recipe / move location (user, 2026-10-19)
-    _add(_n, USEFUL if _n == "Garment Box" else PROG_SKIP, 1, "key", {"item": _gid})
+    # Garment Box opens no recipe / move location (user, 2026-10-19); Vision / Tone Dial aren't used by any recipe
+    # in logic (user, 0.23.0: useful)
+    _add(_n, USEFUL if _n in ("Garment Box", "Vision Dial", "Tone Dial") else PROG_SKIP, 1, "key", {"item": _gid})
 _add("Jet Dial", PROG_SKIP, 1, "key", {"item": 95, "move": (4, 13)})
 _add("Progressive Item Bag Upgrade", USEFUL, 2, "key", {"item": [162, 163]})
 _add("Progressive Palette Upgrade", USEFUL, 2, "key", {"item": [164, 165]})
@@ -317,15 +319,27 @@ for _k in range(5):
 for _k in range(3):
     _add(f"Map 6, Fragment {_k + 1}", PROG_SKIP, 1, "key", {"item": 209 + _k})
 # Log Poses open islands in the Next Island menu (the Wooded Isle is always open)
-_add("Gorge Isle, the Ruined Path", PROG, 1, "island", 2)
+_add("Gorge Isle, The Cliff Ruins", PROG, 1, "island", 2)   # was "the Ruined Path" (0.21.0)
 _add("Central Isle, New Beginnings", PROG, 1, "island", 5)
-# The Final Door (shrine 500): locked (impossible cost) until this item, so only with goal doom_guardian
+# The Final Door (shrine 500): locked (impossible cost) until this item; only in the pool with goal doom_guardian
 _add("The Final Door", PROG, 1, "shrine", 500)
 SHRINE_ACCESS["The Final Door"] = 500
 ISLAND_5_ITEMS = {"Central Isle, New Beginnings", "The Final Door"}
 ISLAND_2_ITEMS = set(GORGE_SHRINE_ACCESS) | {"Thousand Sunny Build Site 1 Access",
-                                             "Gorge Isle, the Ruined Path"} | {f"Map {m}, Fragment {k + 1}" for m, n in ((1, 4), (4, 5), (6, 3))
+                                             "Gorge Isle, The Cliff Ruins"} | {f"Map {m}, Fragment {k + 1}" for m, n in ((1, 4), (4, 5), (6, 3))
                                                for k in range(n)}
+# ---- Island 3 update (0.21.0, user's notes 2026-10-28): Iceberg Isle. Added last so earlier ids stay.
+ICEBERG_SHRINE_ACCESS = {
+    "Iceberg Isle Shrine 1 Access": 300, "Iceberg Isle Shrine 2 Access": 301,
+    "Iceberg Isle Build Site 1 Access": 311, "Iceberg Isle Build Site 2 Access": 312,
+    "Iceberg Isle Build Site 3 Access": 313, "Iceberg Isle Build Site 4 Access": 314,   # 3 / 4: Mole, not in logic
+}
+for _n, _sid in ICEBERG_SHRINE_ACCESS.items():
+    _add(_n, PROG if _sid in (300, 301, 311, 312) else PROG_SKIP, 1, "shrine", _sid)
+SHRINE_ACCESS.update(ICEBERG_SHRINE_ACCESS)
+for _k in range(3):
+    _add(f"Map 3, Fragment {_k + 1}", PROG_SKIP, 1, "key", {"item": 198 + _k})   # Vision Dial chest 13700
+_add("Iceberg Isle, Unexplored Ice Region", PROG, 1, "island", 3)
 BUILD_SITE_IDS = {sid for sid in SHRINE_ACCESS.values() if sid % 100 >= 10}
 
 # Treasure maps in this world: map name -> its fragment item names
@@ -333,6 +347,18 @@ MAP_FRAGMENT_GROUPS: Dict[str, List[str]] = {}
 for _i in ITEMS:
     if _i.name.startswith("Map ") and ", Fragment " in _i.name:
         MAP_FRAGMENT_GROUPS.setdefault(_i.name.split(",")[0], []).append(_i.name)
+
+# ---- Traps (0.21.6): filler with option include_traps. data = status id (docs/status_effects.md); the client hits
+# the current Straw Hat with it through the pending hit record, one trap at a time.
+TRAP = "trap"
+TRAP_ITEMS: Dict[str, int] = {"Burn Trap": 0, "Frozen Trap": 1, "Poison Trap": 3, "Paralysis Trap": 4,
+                              "Sleep Trap": 5, "Stun Trap": 7, "Heat Trap": 9}
+for _n, _sid in TRAP_ITEMS.items():
+    _add(_n, TRAP, 0, "trap", _sid)
+# 0.22.1: the Heat Trap set Sanji's Diable Jambe state (status 9 = heat), not an SP drain (user). Kept so its item id
+# stays; never placed, and the client ignores it.
+RETIRED_TRAPS = {"Heat Trap"}
+ACTIVE_TRAPS = [n for n in TRAP_ITEMS if n not in RETIRED_TRAPS]
 
 ITEM_TABLE: Dict[str, ItemDef] = {i.name: i for i in ITEMS}
 ITEM_IDS: Dict[str, int] = {i.name: BASE_ID + n for n, i in enumerate(ITEMS)}
@@ -395,12 +421,13 @@ _loc("Wooded Isle Secret Boss - Captain Buggy Defeated", "An Incomplete Path", (
 _loc("Wooded Isle - Gabri Level Up Event 3", "An Incomplete Path", ("flag", 11403))
 _loc("Wooded Isle - Sea King Fin Chest", "An Incomplete Path", ("chest", 11706))
 
-# Goal (option "goal"): the island boss of the last island in the seed (event, no location id)
+# Goal (option "goal"): the boss that ends the game (event, no location id). Every island is in every seed.
 ENERU = 'Wooded Isle Island Boss - "God" Eneru Defeated'          # EventScriptEndFlag 11351
 MORIA = "Gorge Isle Island Boss - Gecko Moria Defeated"            # EventScriptEndFlag 12351
 FINAL_BOSS = "Central Isle - Doom Guardian Defeated"                  # 15020/15030, GameClear ([0x8068A298]+6)
+AOKIJI = "Iceberg Isle Island Boss - Aokiji Defeated"                # EventScriptEndFlag 13355 (0.21.0)
 GOALS = {0: (ENERU, 11351, "Island Boss"), 1: (MORIA, 12351, "Gorge Isle Island Boss"),
-         2: (FINAL_BOSS, 15030, "Central Isle")}
+         2: (FINAL_BOSS, 15030, "Central Isle"), 3: (AOKIJI, 13355, "Iceberg Isle Island Boss")}
 GOAL_EVENT, GOAL_FLAG = ENERU, 11351   # defaults for older slot data
 
 # Crafting first-time checks: (room, row, original result name, art level, dummy?)
@@ -493,23 +520,23 @@ _loc("Thousand Sunny - Red Fruit Chest", "Thousand Sunny (After an Island Boss)"
 _loc("First Step on the Gorge Isle", "Gorge Isle Part 1", ("flag", 12200))
 _loc("Gorge Isle - Zombie Ambush", "Gorge Isle Part 1", ("flag", 12251))
 _loc("Gorge Isle - Golden Fruit Chest", "Gorge Isle Part 2", ("chest", 12700))
-_loc("Gorge Isle - The Silent Ancient Creature", "Gorge Isle Part 2", ("shrine", 200))
+_loc("Gorge Isle Shrine - The Silent Ancient Creature", "Gorge Isle Part 2", ("shrine", 200))
 _loc("Gorge Isle Mid-Boss - Captain Kuro Defeated", "Gorge Isle Part 3", ("flag", 12301))
 _loc("Gorge Isle Mid-Boss - Don Krieg Defeated", "Gorge Isle Part 3", ("flag", 12302))
 _loc("Gorge Isle - Gabri Level Up Event 1", "Gorge Isle Part 3", ("flag", 12303))
 _loc("Gorge Isle - Marine Ambush", "Gorge Isle Part 3", ("flag", 12271))
 _loc("Gorge Isle - Red Orb Chest", "Gorge Isle Part 3", ("chest", 12705))
 _loc("Gorge Isle - Blue Fruit Chest", "Gorge Isle Part 3", ("chest", 12706))
-_loc("Gorge Isle - An Incomplete Path", "Gorge Isle Part 3", ("shrine", 211))
+_loc("Gorge Isle Build Site - An Incomplete Path", "Gorge Isle Part 3", ("shrine", 211))
 _loc("Gorge Isle - Antidote Powder Chest", "Gorge Isle Part 4", ("chest", 12701))
 _loc("Gorge Isle - Royal Jelly Chest", "Gorge Isle Part 4", ("chest", 12703))
 _loc("Gorge Isle - Enhanced Reel Chest", "Gorge Isle Part 4", ("chest", 12704))
 _loc("Gorge Isle Monument - Creation", "Gorge Isle Part 4", ("flag", 12652))
-_loc("Gorge Isle - The Ruins in the Sunset", "Gorge Isle Part 4", ("shrine", 201))
-_loc("Gorge Isle - An Incomplete Path (2)", "Gorge Isle Part 4", ("shrine", 212))
-_loc("Gorge Isle - An Unclimbable Path", "Gorge Isle Optional Bridge Path", ("shrine", 213))
+_loc("Gorge Isle Shrine - The Ruins in the Sunset", "Gorge Isle Part 4", ("shrine", 201))
+_loc("Gorge Isle Build Site - An Incomplete Path (2)", "Gorge Isle Part 4", ("shrine", 212))
+_loc("Gorge Isle Build Site - An Unclimbable Path", "Gorge Isle Optional Bridge Path", ("shrine", 213))
 _loc("Gorge Isle - Mask Fragment Chest", "Gorge Isle Optional Ladder Path", ("chest", 12702))
-_loc("Gorge Isle - An Incomplete Path (3)", "Gorge Isle Optional Ladder Path", ("shrine", 214))
+_loc("Gorge Isle Build Site - An Incomplete Path (3)", "Gorge Isle Optional Ladder Path", ("shrine", 214))
 _loc("Gorge Isle - Large Marine Ambush", "Gorge Isle Optional Poison Path", ("flag", 12263))
 _loc("Gorge Isle Monument - Hope", "Gorge Isle Optional Poison Path", ("flag", 12651))
 # ---- 0.17.0: islands open with Log Pose items; the final island (Central Isle) and after-Gecko Moria checks.
@@ -550,6 +577,32 @@ CRAFTS_EXTRA: List[Tuple[str, int, str, bool]] = [
 for _room, _row, _res, _d in CRAFTS_EXTRA:
     _loc(f"{ROOM_LOCATION_PREFIX[_room]} {_res}", "Thousand Sunny", ("craft", _room, _row))
 CRAFTS += CRAFTS_EXTRA
+
+# ---- Island 3 update (0.21.0): Iceberg Isle (docs/island3_scope.md, user's notes 2026-10-28). Obstructed Paths
+# (Mole) aren't in logic: monuments 13651 / 13652, ambush 13281, secret boss 13401 / 13403, chests 13702 / 13705.
+_loc("First Step on the Iceberg Isle", "Iceberg Isle Part 1", ("flag", 13200))
+_loc("Iceberg Isle - Pirate Ambush", "Iceberg Isle Part 1", ("flag", 13251))
+_loc("Iceberg Isle Build Site - An Unclimbable Path", "Iceberg Isle Part 1", ("shrine", 311))
+_loc("Iceberg Isle - Large Mud Puppet Ambush", "Iceberg Isle Part 2", ("flag", 13263))
+_loc("Iceberg Isle Shrine - The Cliff of Ice", "Iceberg Isle Part 2", ("shrine", 300))
+_loc("Iceberg Isle Mid-Boss - Wapol Defeated", "Iceberg Isle Part 4", ("flag", 13301))
+_loc("Iceberg Isle - Gabri Level Up Event 1", "Iceberg Isle Part 4", ("flag", 13303))
+_loc("Iceberg Isle - White Orb Chest", "Iceberg Isle Part 4", ("chest", 13704))      # switched on by 13303
+_loc("Iceberg Isle - Frozen Meat Chest", "Iceberg Isle Part 4", ("chest", 13703))
+_loc("Iceberg Isle Build Site - An Unclimbable Path (2)", "Iceberg Isle Part 4", ("shrine", 312))
+_loc("Iceberg Isle - Vision Dial Chest", "Iceberg Isle Optional Ladder Route", ("chest", 13700))   # Map 3
+_loc("Iceberg Isle - Mystery Gadget Chest", "Iceberg Isle Optional Ladder Route", ("chest", 13706))
+_loc("Iceberg Isle - Marine Ambush", "Iceberg Isle Part 5", ("flag", 13271))
+_loc("Iceberg Isle Shrine - The Hall of Blizzards", "Iceberg Isle Part 5", ("shrine", 301))
+_loc("Iceberg Isle - Gourmet Mushroom Chest", "Iceberg Isle Part 6", ("chest", 13701))
+_loc("Iceberg Isle Island Boss - Spandam Defeated", "Iceberg Isle Island Boss", ("flag", 13352))
+# 13353 starts the Aokiji fight after Spandam; its cutscene is a Gabri level-up (user: a location)
+_loc("Iceberg Isle - Gabri Level Up Event 2", "Iceberg Isle Island Boss", ("flag", 13353))
+_loc(AOKIJI, "Iceberg Isle Island Boss", ("flag", 13355))
+_loc("Iceberg Isle - Gabri Level Up Event 3", "Post-Aokiji", ("flag", 13356))
+_loc("Thousand Sunny - Gold Orb Chest (3)", "Post-Aokiji", ("chest", 10854))         # switched on by 13356
+_loc("Thousand Sunny - Restorative Drug Chest", "Post-Aokiji", ("chest", 10855))     # switched on by 13356
+_loc("First Step on the Central Isle", "Central Isle", ("flag", 15200))
 
 LOCATION_TABLE: Dict[str, LocDef] = {l.name: l for l in LOCATIONS}
 LOCATION_IDS: Dict[str, int] = {l.name: BASE_ID + n for n, l in enumerate(LOCATIONS)}
@@ -610,3 +663,25 @@ SUPER_MOVES = {
 # Locations removed by Super Move Locations: off (super moves and co-op moves)
 SUPER_LOCATION_NAMES = ({f"{_c} - {_m} Level {_lv}" for _c, _m in SUPER_MOVES for _lv in MOVE_LEVELS}
                         | {f"Co-op - {_m} Level {_lv}" for _m, _cid, _i, _w in COOP_LOCATIONS for _lv in MOVE_LEVELS})
+
+# Starting Costumes (user, 2026-10-26): option value -> (costume +0xC0, style +0xEC). Costume 0 = Unlimited,
+# 1 = Thriller Bark. Luffy's and Usopp's Thriller Bark style 0 is the hat ON. Luffy's options name the hat-off style
+# "Thriller Bark"; Usopp's keep the game's default (hat on) as "Thriller Bark" with "Hat Off" as the variant (user).
+COSTUME_CHOICES: List[Tuple[str, List[Tuple[str, str, int, int]]]] = [
+    ("Luffy", [("unlimited", "Unlimited", 0, 0), ("unlimited_hat_on", "Unlimited (Hat On)", 0, 1),
+               ("thriller_bark", "Thriller Bark", 1, 1), ("thriller_bark_hat_on", "Thriller Bark (Hat On)", 1, 0)]),
+    ("Zoro", [("unlimited", "Unlimited", 0, 0), ("unlimited_bandana_on", "Unlimited (Bandana On)", 0, 1),
+              ("thriller_bark", "Thriller Bark", 1, 0), ("thriller_bark_bandana_on", "Thriller Bark (Bandana On)", 1, 1)]),
+    ("Usopp", [("unlimited", "Unlimited", 0, 0), ("unlimited_goggles_on", "Unlimited (Goggles On)", 0, 1),
+               ("thriller_bark", "Thriller Bark", 1, 0), ("thriller_bark_hat_off", "Thriller Bark (Hat Off)", 1, 1)]),
+    ("Sanji", [("unlimited", "Unlimited", 0, 0), ("unlimited_glasses_on", "Unlimited (Glasses On)", 0, 1),
+               ("thriller_bark", "Thriller Bark", 1, 0), ("thriller_bark_glasses_on", "Thriller Bark (Glasses On)", 1, 1)]),
+    ("Nami", [("unlimited", "Unlimited", 0, 0), ("unlimited_hair_down", "Unlimited (Hair Down)", 0, 1),
+              ("thriller_bark", "Thriller Bark", 1, 0), ("thriller_bark_hair_down", "Thriller Bark (Hair Down)", 1, 1)]),
+    ("Chopper", [("unlimited", "Unlimited", 0, 0), ("thriller_bark", "Thriller Bark", 1, 0)]),
+    ("Robin", [("unlimited", "Unlimited", 0, 0), ("unlimited_hat_on", "Unlimited (Hat On)", 0, 1),
+               ("thriller_bark", "Thriller Bark", 1, 0)]),
+    ("Franky", [("unlimited", "Unlimited", 0, 0), ("unlimited_shades_on", "Unlimited (Shades On)", 0, 1),
+                ("thriller_bark", "Thriller Bark", 1, 0), ("thriller_bark_shades_on", "Thriller Bark (Shades On)", 1, 1)]),
+    ("Brook", [("unlimited", "Unlimited", 0, 0), ("thriller_bark", "Thriller Bark", 1, 0)]),
+]

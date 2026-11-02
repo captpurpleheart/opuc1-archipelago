@@ -11,7 +11,7 @@ import os
 import time
 import traceback
 from collections import Counter
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import Utils
 from CommonClient import ClientCommandProcessor, get_base_parser, gui_enabled, logger, server_loop
@@ -26,18 +26,19 @@ except ImportError:
     from CommonClient import CommonContext
 from NetUtils import ClientStatus, NetworkItem
 
-from .data import (ROD_GRADE_BYTES_4, line_level, rod_level_from_items, BASE_ID, CHARACTERS, CRAFTS, DUMMY_RECIPES, GAME, GOALS, ITEM_IDS, ITEM_TABLE, ITEMS,
+from .data import (RETIRED_TRAPS, ROD_GRADE_BYTES_4, line_level, rod_level_from_items, BASE_ID, CHARACTERS, CRAFTS, DUMMY_RECIPES, GAME, GOALS, ITEM_IDS, ITEM_TABLE, ITEMS,
                    LOCATION_IDS, LOCATIONS, SHRINE_ACCESS, ROOM_OPTIONS, ART_ITEMS, ROOM_ART,
                    MAP_FRAGMENT_GROUPS, BUILD_SITE_IDS)
 
 try:
-    from .game_state import (BAG_CAPACITY, HIDDEN_ALSO_COMMENT, HIDDEN_AP_COMMENT, NO_LOCATION_COMMENT, GameState,
-                             also_comes_comment, placeholder_comment, rod_level_byte)
+    from .game_state import (GO_REQ, BAG_CAPACITY, HIDDEN_ALSO_COMMENT, HIDDEN_AP_COMMENT, NO_LOCATION_COMMENT, GameState,
+                             also_comes_comment, placeholder_comment, rod_level_byte, item_kind)
 except ImportError as e:  # dolphin_memory_engine missing
     GameState = None
     IMPORT_ERROR = e
 
 ID_TO_ITEM = {v: k for k, v in ITEM_IDS.items()}
+GABRI_LEVELS = ITEM_TABLE["Progressive Gabri Level"].count     # 13
 try:
     import json as _json, pkgutil as _pkgutil
     WORLD_VERSION = _json.loads(_pkgutil.get_data(__package__, "archipelago.json"))["world_version"]
@@ -53,13 +54,15 @@ CRAFT_LOCS = {(c[1], c[2]): lid for lid, c in CHECKS_BY_KIND.get("craft", [])}
 COOP_LOCS = [(lid, c[1], c[2]) for lid, c in CHECKS_BY_KIND.get("coop", [])]
 MAP_FRAGMENTS = {d.name for d in ITEMS if d.name.startswith("Map ") and ", Fragment " in d.name}
 # Tools that the game replaces when they're upgraded at the Workshop: crafting the Bug-Catcher Net uses up the Broken
-# net (and its "ever obtained" bit), so the client must not give the Broken net again (0.19.7).
+# net (and its "ever obtained" bit), so the client must not give the Broken net again (user report, 2026-10-26:
+# Broken net back after crafting the net). (Rods and vacuum are handled through their slot bytes, not replaced.)
 SUPERSEDED_BY = {3: (2,)}
 SUNNY_FLAG = 11990          # "First Step on the Thousand Sunny": the Pickaxe is held back until then
 MOVE_LOCS = [(lid, c[1], c[2], c[3]) for lid, c in CHECKS_BY_KIND.get("move", [])]
 CATCH_LOCS = {c[1]: lid for lid, c in CHECKS_BY_KIND.get("catch", [])}     # fish / creature item -> location
 DUMMY_CRAFTS = {(room, row) for room, row, _, dummy in CRAFTS if dummy}
 CONSUMABLE_KINDS = {"filler"}
+TRAP_MS, TRAP_GAP = 5000, 2.0      # each trap's status time (ms, as tested by the user) and a pause between traps
 
 
 class OPUCCommandProcessor(ClientCommandProcessor):
@@ -116,9 +119,21 @@ class OPUCContext(CommonContext):
         self.last_seen: Set[int] = set()
         self.owner_session = -1             # game session whose save owner was checked
         self.late_session = None            # session that was already running when the client connected
+        self.costume_session = -1           # new game session that still needs its Starting Costumes
+        self.costume_done: Set[int] = set()
         self.connect_checked = False
         self.save_ok = False
         self.delivered = 0          # how many received items have had their one-time delivery (consumables)
+        self.traps_done = 0         # received traps already played (kept in the progress file, not the save)
+        self.traps_ahead: Set[int] = set()   # traps played out of order (a Burn Trap waiting on the Sunny was skipped)
+        self.death_pending: Optional[str] = None     # Death Link received, not applied yet (source)
+        self.death_applied_at = 0.0                  # when we last applied one (its fall isn't sent back)
+        self.fallen_prev: Optional[Set[int]] = None  # Straw Hats down on the last pass
+        self.trap_state: Optional[dict] = None       # current trap: phase pending / active / ending, name, since, ms
+        self.hp_prev: Optional[Dict[int, Tuple[int, int]]] = None   # Straw Hats' HP on the last pass (Death Link)
+        self.owned_chars: Set[int] = set()           # Straw Hats you can play (start character + received)
+        self.wardrobe_done = False                   # wardrobe spots switched on during this Sunny visit
+        self.go_prev = False                         # Game Over revive flag on the last pass (Death Link)
         self.passes = 0
         self.step = "starting"
         self.last_error = ""
@@ -129,10 +144,15 @@ class OPUCContext(CommonContext):
         self.pickaxe_note = False
         self.armed_keys: List[Tuple[str, str]] = []      # held-back key items / Arts (name, reason)
         self.armed_items: List[Tuple[str, str]] = []     # received consumables not given yet
+        self.armed_traps: List[Tuple[str, str]] = []     # received traps not played yet
         self.bag_full_said = False
         self.last_give = "none"
         self.session_seen = 0       # GameState.sessions when per-session state was last reset
         self.keys_requested: Set[int] = set()
+
+    def on_deathlink(self, data: dict) -> None:
+        super().on_deathlink(data)
+        self.death_pending = data.get("source", "someone")
 
     async def server_auth(self, password_requested: bool = False):
         if password_requested and not self.password:
@@ -143,6 +163,7 @@ class OPUCContext(CommonContext):
     def on_package(self, cmd: str, args: dict):
         if cmd == "Connected":
             self.slot_data = args.get("slot_data", {})
+            Utils.async_start(self.update_death_link(bool(int(self.slot_data.get("death_link", 0)))))
             self.sent = set(args.get("checked_locations", []))
             self.load_progress()
             if self.mem:
@@ -176,8 +197,9 @@ class OPUCContext(CommonContext):
                 if key:
                     player = self.player_names.get(item.player, "someone")
                     name = self.item_names.lookup_in_slot(item.item, item.player)
-                    self.comments[key] = (placeholder_comment(player, name) if key in DUMMY_CRAFTS
-                                          else also_comes_comment(player, name))
+                    kind = item_kind(item.flags)
+                    self.comments[key] = (placeholder_comment(player, name, kind) if key in DUMMY_CRAFTS
+                                          else also_comes_comment(player, name, kind))
         super().on_package(cmd, args)    # Universal Tracker listens to the same messages
 
     # ---- one-time deliveries survive client restarts (per seed and slot)
@@ -187,14 +209,20 @@ class OPUCContext(CommonContext):
     def load_progress(self) -> None:
         try:
             with open(self._progress_file()) as f:
-                self.delivered = json.load(f).get("delivered", 0)
+                data = json.load(f)
+            self.delivered = data.get("delivered", 0)
+            self.traps_done = data.get("traps", 0)
+            self.traps_ahead = set(data.get("traps_ahead", []))
         except (OSError, ValueError):
             self.delivered = 0
+            self.traps_done = 0
+            self.traps_ahead = set()
 
     def save_progress(self) -> None:
         try:
             with open(self._progress_file(), "w") as f:
-                json.dump({"delivered": self.delivered}, f)
+                json.dump({"delivered": self.delivered, "traps": self.traps_done,
+                           "traps_ahead": sorted(self.traps_ahead)}, f)
         except OSError:
             pass
 
@@ -203,6 +231,10 @@ class OPUCContext(CommonContext):
         if not rows:
             return "Nothing is waiting: every item received so far has been given to you."
         return "\n".join(f"{name}  [color=#9a9a9a]({why})[/color]" for name, why in rows)
+
+    def gabri_text(self) -> str:
+        n = sum(1 for it in self.items_received if ID_TO_ITEM.get(it.item) == "Progressive Gabri Level")
+        return f"Gabri Level: {min(n, GABRI_LEVELS)}/{GABRI_LEVELS}"
 
     def make_gui(self):
         ui = super().make_gui()          # Archipelago's window, or Universal Tracker's
@@ -231,6 +263,23 @@ class OPUCContext(CommonContext):
                     Clock.schedule_interval(lambda _dt: setattr(label, "text", ctx.armed_text()), 0.5)
                 except Exception as e:   # never let the extra tab stop the client from opening
                     logger.warning(f"Armed Items tab not available: {e}")
+                try:
+                    # Gabri Level counter to the right of the Connect button (user, 0.23.4; a fuller item tracker
+                    # with Straw Hats / tools may follow)
+                    from kivy.clock import Clock
+                    from kivy.metrics import dp
+                    try:
+                        from kivymd.uix.label import MDLabel as Label
+                    except ImportError:
+                        from kivy.uix.label import Label
+                    # one line: the bar is only ~20 dp tall inside its padding, a second line gets cut off
+                    gabri = Label(text=ctx.gabri_text(), size_hint_x=None, width=dp(150),
+                                  halign="center", valign="middle", shorten=False)
+                    gabri.bind(size=lambda w, v: setattr(w, "text_size", v))
+                    self.connect_layout.add_widget(gabri)
+                    Clock.schedule_interval(lambda _dt: setattr(gabri, "text", ctx.gabri_text()), 0.5)
+                except Exception as e:
+                    logger.warning(f"Gabri Level counter not available: {e}")
                 return container
 
         return OPUCManager
@@ -248,6 +297,7 @@ def received_counts(ctx: OPUCContext) -> Counter:
 def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
     start = int(ctx.slot_data.get("starting_character", 0))
     owned_chars = {start} | {i for i, n in enumerate(CHARACTERS) if have[n]}
+    ctx.owned_chars = owned_chars
     g.enforce_crew(owned_chars, start)
 
     # Thousand Sunny options: 0 vanilla (Workshop open; Kitchen / Pharmacy from chapter 3, after the
@@ -259,21 +309,23 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
             continue
         unlock_opt, _a, ci = ROOM_OPTIONS[d.data]
         mode = int(sd.get(unlock_opt, 1))
-        if mode == 0:
+        if mode == 4:                     # start_with (Kitchen / Pharmacy)
+            ok = True
+        elif mode == 0:                   # Workshop start_with; Kitchen / Pharmacy vanilla
             ok = d.data == "workshop" or g.chapter() >= 3
         else:
             ok = (mode == 2 or bool(have[d.name])) and (mode == 1 or ci in owned_chars)
         if ok:
             rooms.add(d.data)
     g.set_rooms(rooms)
-    # Next Island menu: islands in the seed open with their Log Pose; the others keep the vanilla rule
+    # Next Island menu: islands in the seed open with their island item; the others keep the vanilla rule
+    # (0.21.0 slot data lists them: every island; older seeds: decided by the goal)
     goal = int(sd.get("goal", 0))
     ch = g.chapter()
     log = {d.data: bool(have[d.name]) for d in ITEMS if d.kind == "island"}
-    g.set_islands({1: True,
-                   2: log.get(2, False) if goal >= 1 else ch > 2,
-                   3: ch > 3, 4: ch > 4,
-                   5: log.get(5, False) if goal >= 2 else ch > 5})
+    by_item = set(sd.get("islands", [n for n, need in ((2, 1), (5, 2)) if goal >= need]))
+    vanilla = {2: ch > 2, 3: ch > 3, 4: ch > 4, 5: ch > 5}
+    g.set_islands({1: True, **{n: (log.get(n, False) if n in by_item else vanilla[n]) for n in vanilla}})
     # Art of Development / Cooking / Compounding wait for their owner when that option is on
     art_held = {ci for _u, art_opt, ci in ROOM_OPTIONS.values() if int(sd.get(art_opt, 0)) and ci not in owned_chars}
     g.set_gabri(have["Progressive Gabri Level"])
@@ -373,6 +425,22 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
         if new_scan:
             g.strip_fragment_drops(list(ctx.slot_data.get("vacuum_orbs", [85] * 5)))
         g.set_blue_orb_spot(70 if int(ctx.slot_data.get("blue_orb_spot_gives_iron_ore", 0)) else 81)
+        sd = ctx.slot_data
+        better_dig = sd.get("better_random_dig_item_rates", sd.get("higher_random_dig_chance", 0))
+        g.set_ground_dig_chance(0.25 if int(better_dig) else 0.05)
+        g.set_creature_drops(bool(int(ctx.slot_data.get("guaranteed_creature_drops", 0))))
+        # Enemy Gunpowder Drop Rate (0.25.0, %); older seeds: Easier Gunpowder Drops (on = 20, or the old % value)
+        rate = sd.get("enemy_gunpowder_drop_rate")
+        if rate is None and int(sd.get("easier_gunpowder_drops", 0)):
+            rate = 20 if int(sd["easier_gunpowder_drops"]) == 1 else int(sd["easier_gunpowder_drops"])
+        if rate is not None:
+            g.set_gunpowder_drops(int(rate))
+        if int(ctx.slot_data.get("better_plant_drop_rates", 0)):
+            g.set_plant_drops()
+        if int(ctx.slot_data.get("equalise_fish_rates", 0)):
+            g.set_fish_rates()
+        if int(ctx.slot_data.get("quick_recipes", 0)):
+            g.set_quick_recipes()
         g.install_hook()
         changed = g.write_tables(moves, abilities) | g.write_coop(coop)
         if changed or new_scan:
@@ -389,9 +457,43 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
             g.patch_traps()             # creatures never escape a trap
         if int(ctx.slot_data.get("fast_traps", 0)):
             g.patch_fast_traps()        # 10 min catch, leaving the field once finishes it
-        g.write_exp(1 + int(ctx.slot_data.get("move_exp_multiplier", 0)))   # 0 off, 1 = 2x, 2 = 3x
+        if int(ctx.slot_data.get("chopper_brook_cold_resistance", 0)):
+            g.patch_cold_resistance()   # Chopper / Brook never get the cold mark
+        if int(ctx.slot_data.get("aquarium_open", 1)):
+            g.patch_aquarium()          # Aquarium (and the helm) open from the start
+        g.write_exp(1 + int(ctx.slot_data.get("move_exp_multiplier", 0)))   # 0 off, 1-4 = 2x-5x
+        # "Walk the Sunny" -> Costume Change was dropped (0.20.3: held the game early on); undo it if an older
+        # client / the test tool left it in memory
+        g.set_walk_costumes(False)
+        apply_starting_costumes(ctx, g)
 
     deliver(ctx, g, key_items)
+    wardrobe(ctx, g, have)
+    ctx.armed_traps = deliver_traps(ctx, g)
+    death_link(ctx, g)
+
+
+def apply_starting_costumes(ctx: "OPUCContext", g: "GameState") -> None:
+    """New game only: write each Straw Hat's costume (+0xC0) and style (+0xEC); the character in play is reloaded
+    through the hook (CharaChangeCostume), the others show it the next time they're switched in."""
+    if ctx.costume_session != g.sessions:
+        return
+    wanted = ctx.slot_data.get("starting_costumes")
+    if not wanted:
+        return
+    state = g.costume_state()
+    player = g.player_index()
+    for ci, (cur_c, cur_s) in state.items():
+        if ci in ctx.costume_done or ci >= len(wanted):
+            continue
+        c, st = wanted[ci]
+        if (cur_c, cur_s) != (c, st):
+            g.set_costume(ci, c, st)
+        if ci == player and (c, st) != (0, 0) and not g.refresh_costume():
+            continue                                # hook busy: ask again next pass (values already written)
+        ctx.costume_done.add(ci)
+    if len(ctx.costume_done) >= len(wanted):
+        ctx.costume_session = -1
 
 
 def deliver(ctx: "OPUCContext", g: "GameState", key_items: List[int]) -> None:
@@ -485,6 +587,131 @@ def deliver(ctx: "OPUCContext", g: "GameState", key_items: List[int]) -> None:
         ctx.save_progress()
 
 
+def wardrobe(ctx: "OPUCContext", g: "GameState", have) -> None:
+    """The Garment Box's own event only shows the Sunny's wardrobe spots if it is received on the Sunny (user,
+    0.22.3). With the box received and known in game, switch them on once per visit to the Sunny (hook command 8)."""
+    sunny = g.on_sunny() if g.settled(3) else None
+    if sunny is not True:
+        if sunny is False:
+            ctx.wardrobe_done = False
+        return
+    if not ctx.wardrobe_done and have["Garment Box"] and g.found(92) and g.request_wardrobe():
+        ctx.wardrobe_done = True
+
+
+def death_link(ctx: "OPUCContext", g: "GameState") -> None:
+    """Death Link: a Straw Hat's HP reaching 0 sends a death (and, with falling_death_link, a fall into the abyss /
+    deep water: [obj + 0x9C] & 0x01000000 turning on). A received death gives the current Straw Hat a fatal hit
+    through the pending hit record once it can be hit safely (same rules as traps). Deaths within 10 s of one we
+    applied aren't sent back."""
+    if "DeathLink" not in ctx.tags or not g.settled():
+        ctx.fallen_prev = None
+        ctx.hp_prev = None
+        return
+    now = time.monotonic()
+    hp = g.crew_hp()
+    down = g.fallen() if int(ctx.slot_data.get("falling_death_link", 1)) else set()
+    go = bool(g.rd(GO_REQ, 1)[0])          # our Game Over routine revived the party (whole crew down)
+    cause = None
+    if go and not ctx.go_prev:
+        ci = g.player_index()
+        cause = f"{CHARACTERS[ci] if ci is not None else 'crew'} was defeated."
+    if ctx.hp_prev is not None and cause is None:
+        died = [ci for ci, (cur, _mx) in hp.items() if cur == 0 and ctx.hp_prev.get(ci, (0, 0))[0] > 0]
+        if died:
+            cause = f"{CHARACTERS[died[0]]} was defeated."
+    if ctx.fallen_prev is not None and cause is None:
+        new = down - ctx.fallen_prev
+        if new:
+            cause = f"{CHARACTERS[min(new)]} fell into the abyss."
+    if cause and now - ctx.death_applied_at > 10:
+        Utils.async_start(ctx.send_death(f"{ctx.player_names.get(ctx.slot, 'Someone')}'s {cause}"))
+    ctx.hp_prev = hp
+    ctx.fallen_prev = down
+    ctx.go_prev = go
+    if ctx.death_pending and g.on_sunny() is False and g.can_trap() and g.death_hit():   # never on the Sunny
+        logger.info(f"Death Link from {ctx.death_pending}: your Straw Hat takes a fatal hit.")
+        ctx.death_pending = None
+        ctx.death_applied_at = now
+
+
+# Trap lengths (ms). Burn: applied long and taken off once it has burned 25% of the character's max HP (or after
+# BURN_MAX_MS, or at 10% HP when that Straw Hat is the only one left standing, so a trap never ends the run; with two
+# or more alive it may knock one out, 0.23.0). Heat Trap retired (0.22.1).
+TRAP_TIME_MS = {"Poison Trap": 10000, "Burn Trap": 60000}
+BURN_SHARE, BURN_FLOOR, BURN_MAX_MS = 0.25, 0.10, 60000
+
+
+def deliver_traps(ctx: "OPUCContext", g: "GameState") -> List[Tuple[str, str]]:
+    """Status traps play one at a time, in the order received: a trap hits the current Straw Hat (no damage) through
+    the pending hit record, and the next one waits until it has worn off plus TRAP_GAP. Played traps are counted in
+    the progress file, so reloading a save doesn't play them again. Returns rows for the Armed tab."""
+    traps = [ID_TO_ITEM.get(it.item, "") for it in ctx.items_received
+             if ITEM_TABLE.get(ID_TO_ITEM.get(it.item, "")) and ITEM_TABLE[ID_TO_ITEM[it.item]].kind == "trap"
+             and ID_TO_ITEM[it.item] not in RETIRED_TRAPS]
+    ctx.traps_done = min(ctx.traps_done, len(traps))
+    now = time.monotonic()
+    st = ctx.trap_state
+    if st and st["phase"] == "pending" and g.settled() and not g.hit_pending():
+        st.update(phase="active", since=now)               # the game took the hit: its time starts now
+        if st["name"] == "Burn Trap":                   # follow the burned Straw Hat, even after a switch
+            st["obj"] = g.player_obj()
+            h = g.hp(st["obj"]) if st["obj"] else None
+            st.update(max=h[1] if h else 0, prev=h[0] if h else 0, lost=0)
+    if st and st["phase"] == "active":
+        if st["name"] == "Burn Trap":
+            h = g.hp(st["obj"]) if st.get("obj") else None
+            elapsed = now - st["since"]
+            if h and st["max"]:
+                st["lost"] += max(0, st["prev"] - h[0])
+                st["prev"] = h[0]
+                # the 10% floor only guards the last Straw Hat standing: with two or more alive a burn may knock
+                # the burned one out (user, 0.23.0)
+                alive = [ci for ci, (cur, _mx) in g.crew_hp().items() if cur > 0 and ci in ctx.owned_chars]
+                floor = len(alive) <= 1 and h[0] <= BURN_FLOOR * st["max"]
+                done = (st["lost"] >= BURN_SHARE * st["max"] or floor or h[0] == 0
+                        or elapsed >= BURN_MAX_MS / 1000)
+            else:                                          # HP not readable: a normal-length burn
+                done = elapsed >= TRAP_MS / 1000
+            done = done or g.on_sunny() is True            # went back to the Sunny: put it out
+            if done and g.request_status(0, add=False):    # take the burn off (hook command 6)
+                st.update(phase="ending", since=now)
+        elif now - st["since"] >= st["ms"] / 1000:
+            st.update(phase="ending", since=now)
+    if st and st["phase"] == "ending" and now - st["since"] >= TRAP_GAP:
+        st = ctx.trap_state = None
+    sunny = g.on_sunny() if g.settled() else None
+    # Burn Traps (and received deaths) stay armed while on the Thousand Sunny (dying there crashed the game, user
+    # 0.22.1); other traps play past them. None = not known yet: Burn waits too.
+    waiting = [i for i in range(ctx.traps_done, len(traps)) if i not in ctx.traps_ahead]
+    playable = [i for i in waiting if traps[i] != "Burn Trap" or sunny is False]
+    if st is None and playable and g.settled() and g.can_trap():
+        i = playable[0]
+        name = traps[i]
+        ms = TRAP_TIME_MS.get(name, TRAP_MS)
+        if g.trap_hit(ITEM_TABLE[name].data, ms):
+            ctx.trap_state = {"phase": "pending", "name": name, "since": now, "ms": ms}
+            ctx.traps_ahead.add(i)
+            while ctx.traps_done in ctx.traps_ahead:      # keep the counter at the first trap not played yet
+                ctx.traps_ahead.discard(ctx.traps_done)
+                ctx.traps_done += 1
+            ctx.save_progress()
+            logger.info(f"{name}!")
+            waiting.remove(i)
+    rows = []
+    if ctx.trap_state:
+        rows.append((ctx.trap_state["name"], "Playing"))
+    nxt = next((i for i in waiting if traps[i] != "Burn Trap" or sunny is False), None)
+    for i in waiting:
+        if i == nxt and not ctx.trap_state:
+            rows.append((traps[i], "Next"))
+        elif traps[i] == "Burn Trap" and sunny is not False:
+            rows.append((traps[i], "Armed (on an island)"))
+        else:
+            rows.append((traps[i], "Armed"))
+    return rows
+
+
 def pending_list(ctx: "OPUCContext", g: "GameState", limit: int = 40) -> None:
     """Received consumables not given yet, for the Armed Items tab (they arrive in this order)."""
     out: List[Tuple[str, str]] = []
@@ -505,12 +732,12 @@ def pending_list(ctx: "OPUCContext", g: "GameState", limit: int = 40) -> None:
             out.append((d.name, "Full Inventory"))
         else:
             out.append((d.name, "Queued behind a full item" if blocked else "Arriving"))
-    ctx.armed_items = out
+    ctx.armed_items = out + ctx.armed_traps
 
 
 def read_checks(ctx: OPUCContext, g: "GameState") -> Set[int]:
     found: Set[int] = set()
-    goal_flag = GOALS[int(ctx.slot_data.get("goal", 0))][1]     # 11351 Eneru, 12351 Gecko Moria
+    goal_flag = GOALS[int(ctx.slot_data.get("goal", 0))][1]     # 11351 Eneru, 12351 Moria, 13355 Aokiji
     flags = g.script_flags(list(FLAG_LOCS) + [goal_flag])
     found |= {FLAG_LOCS[f] for f in flags if f in FLAG_LOCS}
     # Doom Guardian: script 15030 (final form beaten -> ending -> GameClear) only sets its end flag after the
@@ -605,6 +832,9 @@ async def game_loop(ctx: OPUCContext) -> None:
                 if owner is not None:
                     ctx.owner_session = g.sessions
                     ctx.save_ok = owner in ("this", "fresh")
+                    if owner == "fresh":            # a new game: put on the Starting Costumes
+                        ctx.costume_session = g.sessions
+                        ctx.costume_done = set()
                     if not ctx.save_ok:
                         logger.warning("This save doesn't belong to this seed and slot ("
                                        + ("made with another seed or slot" if owner == "other"

@@ -3,25 +3,30 @@
 An [Archipelago](https://archipelago.gg) world and Dolphin client for **One Piece Unlimited Cruise Part 1: The
 Treasure Beneath the Waves** (Wii, PAL `ROUPAF`).
 
-> **Alpha.** This release covers the **Thousand Sunny, Island 1 (Wooded Isle), Island 2 (Gorge Isle) and the final
-> island (Central Isle)**. Islands 3 and 4 are planned. Please report bugs!
+> **Alpha.** This release covers the **Thousand Sunny, Island 1 (Wooded Isle), Island 2 (Gorge Isle), Island 3
+> (Iceberg Isle) and the final island (Central Isle)**. Island 4 is planned. Please report bugs!
 >
-> Latest: **0.19.9** (0.19.6 "The Gorge Isle Scope" + fixes) - see [CHANGELOG.md](CHANGELOG.md).
+> Latest: **0.25.1** "The Iceberg Isle Scope" - see [CHANGELOG.md](CHANGELOG.md).
 
 ## What's randomized
 
-**Locations** (about 400 with the default options): move level-ups (and optionally super / co-op move
+**Locations** (about 440 with the default options): move level-ups (and optionally super / co-op move
 level-ups), story events, ambushes and bosses (including the secret boss), treasure chests and map dig spots,
 Stone Monuments, Gabri Shrines and Build Sites, the first craft of each Development / Cooking / Compounding
 recipe, and (optionally) catching each fish and creature for the first time.
 
-**Goal** (option): "God" Eneru, Gecko Moria, or the Doom Guardian on Central Isle (default). The Gorge Isle and
-Central Isle are unlocked by Archipelago items, so they can be reached much earlier than in the base game.
+**Goal** (option): "God" Eneru, Gecko Moria, Aokiji, or the Doom Guardian on Central Isle (default). Every island
+is in every seed. The Gorge Isle, Iceberg Isle and Central Isle are unlocked by Archipelago items, so they can be
+reached much earlier than in the base game.
 
 **Items:** the Straw Hats (you start with one), moves, co-op moves and abilities (including the Arts), tools and
 key items (Pickaxe, Bug-Catcher Net, Vacuum Cleaner, Fishing Rod and upgrades, etc), Usopp's Workshop / Sanji's
 Kitchen / Chopper's Pharmacy, the islands, Gabri levels, shrine and build site access, "The Final Door",
-treasure map fragments, and filler (food and medicine, also in packages of 3 and 5, Kuwagata and Orbs).
+treasure map fragments, and filler (food and medicine, also in packages of 3 and 5, Kuwagata and Orbs), plus
+optional status traps (Burn, Poison, Frozen, Paralysis, Sleep, Stun).
+
+**Death Link** (option): a Straw Hat being defeated (and, optionally, falling into the abyss / deep water) sends a
+death; a received death knocks out the Straw Hat you're controlling once it's safe (never on the Thousand Sunny).
 
 Other quality-of-life changes the client makes:
 - No Game Over: the party is revived instead. Boss fights restart, ambushes carry on, and elsewhere you're
@@ -32,8 +37,11 @@ Other quality-of-life changes the client makes:
 - The Database menu is open from the start (fish / creature checks are read from it).
 - Treasure map drops from enemies are Gold Orbs instead; the Sunny's dust piles give Orbs.
 - No "An Idea!" recipe popups (the client shows recipes itself).
-- Optional: traps that never expire and catch faster, Iron Scrap giving Gold Energy, and the repeatable dig spot
-  by the Thousand Sunny giving Pure Iron Ore.
+- The Sunny's Aquarium (fish tank storage) and the helm's Next Island menu are open from the start.
+- The client window shows your Gabri Level next to the Connect button.
+- Optional (see the YAML): better creature traps, guaranteed creature drops, better plant / random dig / Gunpowder
+  drop rates, equal fish rates, quick fish / creature recipes, Iron Scrap giving Gold Energy, the repeatable dig
+  spot by the Thousand Sunny giving Pure Iron Ore, Chopper & Brook immune to the cold, starting costumes.
 
 ## Requirements
 
@@ -63,19 +71,22 @@ If the client reports that dolphin-memory-engine is missing, install it into the
 
 ## Options
 
-Grouped as in the YAML:
-- **General** - starting character, goal.
-- **Item Options** - combined rod/line upgrades, how many rod upgrade items, treasure maps needing every
-  fragment, no diminishing returns for food, recipe discovery through Arts, recipe descriptions that spoil
-  locations, Iron Scrap giving Gold Energy, the Blue Orb dig spot giving Pure Iron Ore, Bag & Palette upgrade
-  item type.
-- **Move & Skill Options** - faster move EXP, Super Move Locations (off / on / unimportant), Cat Burglar and
-  Light Weight item type.
-- **Fishing & Bug-Catching Options** - Fishsanity, Creaturesanity, how many of each, Sea Kings important, Traps
-  Never Expire, Fast Traps.
-- **Thousand Sunny & Crew Gating Options** - what opens each crafting room, Arts requiring their Straw Hat, Nami for
-  treasure maps, Robin for Stone Monuments, Franky for Build Sites.
-- **Filler Weighting Options** - quality / bundle weighting and the food / medicine / other mix.
+Grouped as in the YAML (every option is explained there):
+- **Game Options** - starting character, goal, Death Link, falling causes a Death Link.
+- **Item Options** - early Pickaxe / Bug-Catcher Net / Fishing Rod / Vacuum Cleaner / Bag Upgrades, Bag & Palette
+  upgrade item type, treasure maps requiring every fragment, Gunpowder logic (on / off, enemy drops in logic or
+  not, or only with Nami's Whirlwind) and the gunners' Gunpowder drop rate.
+- **Characters, Moves & Skills Options** - faster move EXP (2X-5X), Super Move Locations (off / on / unimportant),
+  Cat Burglar, Light Weight and Flower Flower Power item types, Chopper & Brook always cold-resistant.
+- **Fishing & Bug-Catching Options** - Fishsanity, Creaturesanity, how many of each, combined rod / line levels,
+  number of rod upgrade items, equal fish rates, better traps, guaranteed creature drops, quick recipes.
+- **Quality of Life Options** - recipe discovery through Arts, recipe descriptions that spoil locations, no
+  diminishing returns for food, Iron Scrap giving Gold Energy, Blue Orb dig spots giving Pure Iron Ore, better random
+  dig item rates, better plant drop rates.
+- **Thousand Sunny & Crew Gating Options** - what opens each crafting room (including start with it), Arts requiring
+  their Straw Hat, Nami for treasure maps, Robin for Stone Monuments, Franky for Build Sites.
+- **Starting Costumes** - each Straw Hat's outfit (Unlimited or Thriller Bark, and its style).
+- **Filler & Trap Weighting Options** - quality / bundle weighting, the food / medicine / other mix, and traps.
 
 ## Reporting bugs
 

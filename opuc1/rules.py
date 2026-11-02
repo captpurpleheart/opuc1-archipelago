@@ -19,13 +19,15 @@ G1, G2, G3, G4 = "Gorge Isle Part 1", "Gorge Isle Part 2", "Gorge Isle Part 3", 
 GBRIDGE, GLADDER, GPOISON = ("Gorge Isle Optional Bridge Path", "Gorge Isle Optional Ladder Path",
                              "Gorge Isle Optional Poison Path")
 GBOSS = "Gorge Isle Island Boss"
-# Regions that only exist when Gorge Isle (Island 2) is in the seed
-ISLAND_2_REGIONS = {POST_ENERU, SUNNY_CH3, G1, G2, G3, G4, GBRIDGE, GLADDER, GPOISON, GBOSS}
 POST_MORIA = "Post-Gecko Moria"
 CENTRAL = "Central Isle"
-# Regions that only exist when the final island is in the seed (goal central_isle)
-ISLAND_5_REGIONS = {POST_MORIA, CENTRAL}
-GORGE_LOG_POSE = "Gorge Isle, the Ruined Path"
+# Iceberg Isle (Island 3), user's region map 2026-10-28
+I1, I2, I3, I4, I5, I6 = (f"Iceberg Isle Part {n}" for n in range(1, 7))
+ILADDER, IBOSS, POST_AOKIJI = "Iceberg Isle Optional Ladder Route", "Iceberg Isle Island Boss", "Post-Aokiji"
+# Every island is in every seed (0.21.0); the region after the goal boss is left out (goal option -> region)
+POST_GOAL = {0: POST_ENERU, 1: POST_MORIA, 3: POST_AOKIJI}
+GORGE_LOG_POSE = "Gorge Isle, The Cliff Ruins"
+ICEBERG_LOG_POSE = "Iceberg Isle, Unexplored Ice Region"
 CENTRAL_LOG_POSE = "Central Isle, New Beginnings"
 Rule = Callable[[CollectionState, int], bool]
 
@@ -47,7 +49,9 @@ def room_open(s: CollectionState, p: int, room: str) -> bool:
     """A Sunny room can be used (Thousand Sunny options; kitchen / pharmacy "vanilla" = after the goal)."""
     unlock_opt, _art_opt, ci = ROOM_OPTIONS[room]
     mode = getattr(s.multiworld.worlds[p].options, unlock_opt).value
-    if mode == 0:     # vanilla: Workshop open; Kitchen / Pharmacy from chapter 3 (after Eneru)
+    if mode == 4:     # start_with (Kitchen / Pharmacy; the Workshop's start_with is 0)
+        return True
+    if mode == 0:     # Workshop: start_with; Kitchen / Pharmacy: vanilla, from chapter 3 (after Eneru)
         return room == "workshop" or s.can_reach_region(SUNNY_CH3, p)
     return ((mode == 2 or s.has(ROOM_ITEM[room], p))
             and (mode == 1 or s.has(CHARACTERS[ci], p)))
@@ -81,6 +85,42 @@ def cast(n):
     """Line level n to reach the fish, and (until tested more) rod level n to land it (user, 2026-10-22)."""
     return _all(line(n), rod_level(n))
 def gabri(n): return lambda s, p: s.has("Progressive Gabri Level", p, n)
+
+
+def gunpowder_drop(s: CollectionState, p: int) -> bool:
+    """Gunpowder from the gunners counts (Gunpowder Drop Gating: none / included / whirlwind = Nami + Whirlwind)."""
+    o = s.multiworld.worlds[p].options
+    mode = o.enemy_gunpowder_drop_logic.value
+    return mode == 1 or (mode == 2 and s.has_all(("Nami", "Nami - Whirlwind"), p))
+
+
+def gunpowder_logic(s: CollectionState, p: int) -> bool:
+    return bool(s.multiworld.worlds[p].options.include_gunpowder_logic.value)
+
+
+def blast_path(s: CollectionState, p: int) -> bool:
+    """Gunpowder (dropped or compounded) on rock paths: it powers up moves, and every Straw Hat can do it (Usopp with
+    his starting Death Blow Lead Star; user, 2026-11-02)."""
+    return gunpowder_logic(s, p) and has_material("Gunpowder")(s, p)
+
+
+def blast_x(s: CollectionState, p: int) -> bool:
+    """Gunpowder on X dig spots: any Straw Hat but Usopp, whose shots fly over them unless he has Usopp Pound."""
+    from .data import CHARACTERS as _C
+    users = [c for c in _C if c != "Usopp"]
+    return (gunpowder_logic(s, p) and has_material("Gunpowder")(s, p)
+            and (s.has_any(users, p) or s.has_all(("Usopp", "Usopp - Usopp Pound"), p)))
+
+
+def rock_path(s: CollectionState, p: int) -> bool:
+    """Rock / ice rock paths: the Pickaxe or Gunpowder."""
+    return pickaxe(s, p) or blast_path(s, p)
+
+
+def dig_or_blast(s: CollectionState, p: int) -> bool:
+    """X dig spots (Clay, Marble, Pure Iron Ore): the Pickaxe, or Gunpowder (not the random plain-ground digs or the
+    treasure map chests, which stay Pickaxe only)."""
+    return pickaxe(s, p) or blast_x(s, p)
 def always(s, p): return True
 
 
@@ -90,30 +130,33 @@ def always(s, p): return True
 SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     # Wooded Isle: player's notes 2026-10-17. Gorge Isle: user's sheet 2026-10-22 (enemy drops need no tool;
     # creature drops need the net).
-    "Bitter Grass": [(P1, always), (P2, always), (P2R, always), (G1, always)],
-    "Medicinal Herbs": [(P1, always), (P2, always), (P2R, always), (G1, always)],
-    "Nectar": [(P1, always), (P2, always), (P2R, always), (G1, always)],
+    # Iceberg Isle: user's sheet 2026-10-28
+    "Bitter Grass": [(P1, always), (P2, always), (P2R, always), (G1, always), (I1, always)],
+    "Medicinal Herbs": [(P1, always), (P2, always), (P2R, always), (G1, always), (I1, always)],
+    "Nectar": [(P1, always), (P2, always), (P2R, always), (G1, always), (I1, always)],
     "Bamboo": [(P1, sharp), (P2, sharp), (G1, sharp)],
     "Bamboo Sprout": [(P1, sharp), (P2, sharp), (G1, sharp)],
     "Coconut": [(P1, always)],
     "Flour": [(P1, always), (GPOISON, always)],
     "Mystery Egg": [(P1, always), (P2, always), (G1, always)],
-    "Long Vine": [(P2, sharp)],
-    "Rubber Fruit": [(P2, always), (G1, always)],
+    "Long Vine": [(P2, sharp), (I2, sharp)],
+    "Rubber Fruit": [(P2, always), (G1, always), (I4, always)],
     "Toxin": [(P2, vacuum), (P2R, vacuum), (G2, vacuum)],
-    "Dial Fragment": [(P1, pickaxe), (P2, always)],
+    "Dial Fragment": [(P1, pickaxe), (P2, always), (ILADDER, always)],   # Iceberg: Enforcer drops
     "Handy Rock": [(P1, pickaxe), (P2, pickaxe), (G1, pickaxe)],
-    "Pure Iron Ore": [(IRON_SPOT, pickaxe)],
+    "Pure Iron Ore": [(IRON_SPOT, dig_or_blast)],
     "Gourmet Mushroom": [(P1, pickaxe), (P2, pickaxe)],
     # Gorge: Doctor Hornet drop; the hornets only drop it when caught with the net (user, 2026-10-23)
-    "Royal Jelly": [(P1, net), (P2, net), (G1, net)],
+    "Royal Jelly": [(P2, net), (G1, net)],      # not Wooded Isle Part 1 (user, 2026-10-28: Honey Bees are Part 2)
     "Blue Fruit": [(P2, always)],
-    "Marble": [(P1, pickaxe), (P2, pickaxe), (G3, pickaxe)],
-    "Clay": [(P1, pickaxe), (P2, pickaxe), (G1, pickaxe)],
-    "Iron Scrap": [(P1, always)],          # Marine drops
+    # X dig spots: Pickaxe or Gunpowder (0.24.0, user)
+    "Marble": [(P1, dig_or_blast), (P2, dig_or_blast), (G3, dig_or_blast)],
+    "Clay": [(P1, dig_or_blast), (P2, dig_or_blast), (G1, dig_or_blast)],
+    "Iron Scrap": [(P1, always), (I4, always)],          # Marine drops
     # Gunpowder: Marine Gunners aren't on Island 1 (user, 2026-10-19); they are in Gorge Isle Part 3.
     # Chopper can also compound it (CRAFTED).
-    "Gunpowder": [(G3, always)],
+    # Gunpowder Drop Gating decides whether these count (0.24.0)
+    "Gunpowder": [(G3, gunpowder_drop), (I1, gunpowder_drop)],      # Iceberg: Pirate Gunners
     "Magnetic Stone": [(P2R, always)],     # enemy drops
     "Spider Web": [(SUNNY, always)],
     "Lens": [(P2, always)],                # eyeball plant drop
@@ -123,13 +166,21 @@ SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     "Red Fruit": [(G1, always)],
     "Wilted Carrot": [(G1, always)],       # Zombie Squirrel drop
     "Wood": [(G1, always)],
-    "Golden Egg": [(G2, pickaxe)],
+    "Golden Egg": [(G2, pickaxe), (I1, net)],      # Iceberg: Flying Penguin drop (net)
     "Explosive Rock Fragment": [(G4, always)],
     "Brown Fruit": [(GPOISON, always)],
+    "Healing Capsule": [(I1, always)],     # Blue Pirate drop (also compounded)
+    "Stamina Capsule": [(I1, always)],     # Red Pirate drop (also compounded)
+    "Golden Fruit": [(I1, always)],
+    "Ice Shard": [(I1, pickaxe)],
+    "Snow Radish": [(I1, pickaxe)],
+    "Ice Powder": [(I1, net)],             # Icicle Lizard drop (also compounded)
+    "Scrap from a Cloak": [(I3, always)],  # Marine Commander drop
+    "Frozen Meat": [(ILADDER, pickaxe)],
     # creatures (repaired net)
     "Swallowtail Butterfly": [(P1, net), (P2, net), (SUNNY, net)],
     "Invisible Swallowtail": [(P1, net), (P2, net)],
-    "Honey Bee": [(P1, net), (P2, net)],
+    "Honey Bee": [(P2, net)],              # not in Part 1 (user, 2026-10-27)
     "Tree Frog": [(P2, net)],
     "Seagull": [(SUNNY, net)],             # user: on the Sunny at any time with the net
     "Lightning Beetle": [(POST_ENERU, net)],   # Wooded Isle Part 2 outside the boss room, after Eneru
@@ -137,11 +188,16 @@ SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     "Hercules Beetle": [(G1, net)],
     "Doctor Hornet": [(G1, net)],
     "Golden Hercules": [(G1, net)],
+    "Icicle Lizard": [(I1, net)],
+    "Flying Penguin": [(I1, net)],
+    "Sleep Butterfly": [(I1, net)],
+    "Ice Beetle": [(I5, net)],
+    "Mammoth Toad": [(ILADDER, net)],
     "Tempest Mouse": [(SUNNY, lambda s, p: has_material("Traps")(s, p))],   # Traps on the Sunny (user)
     # fish (line = how far the lure must land; opuc-fishing.md)
     # Part 1 spot next to the Sunny: no Brook needed (user correction, 2026-10-19)
     "Striped Clam": [(P1, rod), (GPOISON, rod)],
-    "Smiley Jellyfish": [(P1, rod)],
+    "Smiley Jellyfish": [(P1, rod), (I1, rod)],
     "Shining Saury": [(P1, _all(rod, cast(1))), (SUNNY, _all(rod, cast(1)))],
     "Forked-Tail Killifish": [(P2, rod), (GLADDER, rod)],
     "Fist Crayfish": [(P2, rod), (GLADDER, rod)],
@@ -149,13 +205,21 @@ SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     "Salamandrake": [(GLADDER, _all(rod, cast(5)))],      # bites at 30-45 m
     "Oriental Butterflyfish": [(GPOISON, rod)],
     "Clawed Shrimp": [(GPOISON, rod)],
-    "Adventure Fish": [(GPOISON, rod)],
+    "Adventure Fish": [(GPOISON, rod), (I1, rod)],
+    "Ice Sunfish": [(I1, _all(rod, cast(5)))],            # 30 m+ (Iceberg spot 13995, Part 1)
+    # 40 m+; user (0.24.0): rod level 5 and line 11 to land it
+    "Elephant Tuna": [(I1, _all(rod, rod_level(5), line(11)))],
     "Skull Knight": [(GPOISON, _all(rod, cast(5)))],      # 30 m+
-    "Shark": [(SUNNY, _all(rod, cast(5)))],
+    # Sharks break free from the standard rod: Whopper Fishing Rod (rod level 11) needed (user, 0.24.0)
+    "Shark": [(SUNNY, _all(rod, line(5), rod_level(11)))],
     # Sea Kings (Sunny-side spot only). Rod grade: Sea King rod assumed for landing them (to confirm).
     "Large Sea King": [(SUNNY, _all(rod, line(8), rod_level(22)))],
     "Extra-Large Sea King": [(SUNNY, _all(rod, line(16), rod_level(22)))],
     "Giant Turtle Sea King": [(SUNNY, _all(rod, line(19), rod_level(22)))],
+    # Landing a Sea King also gives its bonus item (item/fish_prm.bin +0x04; user 2026-10-28: in logic)
+    "Sea King Fin": [(SUNNY, _all(rod, line(8), rod_level(22)))],          # Large Sea King
+    "Sea King Head Crest": [(SUNNY, _all(rod, line(16), rod_level(22)))],  # Extra-Large Sea King
+    "Sea King Shell": [(SUNNY, _all(rod, line(19), rod_level(22)))],       # Giant Turtle Sea King
 }
 
 
@@ -199,7 +263,7 @@ def needs_sea_king(room: str, row: int) -> bool:
 CRAFTED: Dict[str, Tuple[str, int]] = {
     "Healing Capsule": ("pharmacy", 0), "Stamina Capsule": ("pharmacy", 2), "Dual-Action Capsule": ("pharmacy", 5),
     "Gunpowder": ("pharmacy", 7), "Stamina Tonic": ("pharmacy", 10), "Syrup": ("pharmacy", 12),
-    "Thunder Powder": ("pharmacy", 15), "Ice Powder": ("pharmacy", 23), "Flame Powder": ("pharmacy", 31),
+    "Thunder Powder": ("pharmacy", 15), "Anti-Cold Cream": ("pharmacy", 17), "Ice Powder": ("pharmacy", 23), "Flame Powder": ("pharmacy", 31),
     "Traps": ("workshop", 5), "Batteries": ("workshop", 17), "Bombs": ("workshop", 21),
     "Special Pirate Soda": ("kitchen", 18),
 }

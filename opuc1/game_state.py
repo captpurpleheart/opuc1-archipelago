@@ -25,7 +25,7 @@ GABRI_PTR = 0x8068A158
 COOP_PTR = 0x8068A650
 EXP_CACHE, EXP_CACHE_SLOTS = 0x650, 8   # per-slot copies of move EXP requirements on CharaObj
 _EXP_SWAP: Dict[Tuple[str, int], Dict[bytes, bytes]] = {}
-EXP_FACTORS = (1, 2, 3)
+EXP_FACTORS = (1, 2, 3, 4, 5)
 FLAG_LIST = 0x805E8B04          # save-data sections, found by name
 # Received-item counter kept in the save file, so a reload (Game Over, quitting without saving) gives back
 # the items received since that save. Last word of EventFuncEndFlag (0xD6C bytes = flags 0-27487; the game
@@ -161,6 +161,56 @@ def andi_(ra, rs, v): return (28 << 26) | (rs << 21) | (ra << 16) | (v & 0xFFFF)
 def ori(ra, rs, v): return (24 << 26) | (rs << 21) | (ra << 16) | (v & 0xFFFF)
 def cmpwi(ra, v): return (11 << 26) | (ra << 16) | (v & 0xFFFF)
 
+# Traps wait while one of these is out: Bug-Catcher Net (2), Broken net (3), Fishing Rods (6, 166-168); -1 = a tool
+# whose item couldn't be read (be safe).
+TRAP_BLOCKING_TOOLS = {2, 3, 6, 166, 167, 168, -1}
+
+# Status routine for hook commands 5 / 6 (r3 = character manager): add / remove status [0x80002F74] (time
+# [0x80002F78]) on the current character. Free low memory 0x80002790-0x800027FF (after the island table).
+STATUS_AT = 0x80002790
+
+# Thousand Sunny check. Current field = script native FieldGetID (0x800A9538) = [[0x8068A218] + 0x20], a field index:
+# 0 = the Thousand Sunny, 1 = Wooded Isle (user test 0.22.2; the scripts compare it with IdxToID(19614..19619) =
+# Sunny, Wooded, Gorge, Iceberg, Island 4, Central Isle).
+FIELD_MGR_PTR, SUNNY_FIELD = 0x8068A218, 0
+
+# Wardrobe touch spots (0.23.0). The Garment Box's item event 354 runs FieldGroupEnable(10808 / 10809) wherever it
+# is received, so a box received away from the Sunny never shows them (user). Hook command 8 runs the script native
+# FieldGroupEnable (0x800A8F40: r3 = group id arg, r4 = on arg, r5 = field arg; script args are 8 bytes {value,
+# u32 type}, type 0 = not given -> current field) for both, from routine WARDROBE_AT (free space after the second
+# Game Over block) with the argument records at WARDROBE_ARGS (2 x 24 bytes).
+WARDROBE_AT, WARDROBE_ARGS, FIELD_GROUP_ENABLE = 0x80002BC0, 0x80002F80, 0x800A8F40
+WARDROBE_SPOTS = (10808, 10809)
+
+
+def wardrobe_code() -> List[int]:
+    at, a = WARDROBE_AT, WARDROBE_ARGS & 0xFFFF
+    def b(i, t, link=1): return 0x48000000 | link | ((t - (at + 4 * i)) & 0x3FFFFFC)
+    return [0x9421FFF0, 0x7C0802A6, 0x90010014,                      # 0-2 frame
+            lis(3, 0x8000), addi(3, 3, a), addi(4, 3, 8), addi(5, 3, 16), b(7, FIELD_GROUP_ENABLE),   # 3-7 10808
+            0x80010014, 0x7C0803A6, 0x38210010,                      # 8-10 frame off
+            lis(3, 0x8000), addi(3, 3, a + 24), addi(4, 3, 8), addi(5, 3, 16),
+            b(15, FIELD_GROUP_ENABLE, 0)]                            # 11-15 10809, tail call
+
+
+def wardrobe_args() -> bytes:
+    return b"".join(struct.pack(">IIIIII", sid, 2, 1, 2, 0, 0) for sid in WARDROBE_SPOTS)
+
+
+def status_code() -> List[int]:
+    at = STATUS_AT
+    def call(i, t): return 0x48000001 | ((t - (at + 4 * i)) & 0x3FFFFFC)
+    return [0x9421FFF0, 0x7C0802A6, 0x90010014,                 # 0-2  frame
+            lwz(3, 0x88, 3), cmpwi(3, 0), 0x41820040,           # 3-5  player? else -> out (word 21)
+            call(6, 0x804CE1A4), cmpwi(3, 0), 0x41820034,       # 6-8  status object? else -> out
+            lis(6, 0x8000), lbz(0, 0x2F07, 6), lwz(4, 0x2F74, 6), lwz(5, 0x2F78, 6),   # 9-12
+            cmpwi(0, 6), 0x41820010,                            # 13-14 remove? -> word 18
+            call(15, 0x804DF60C), 0x48000014,                   # 15-16 add, -> out (word 21)
+            0x60000000,                                         # 17
+            li(5, 0), call(19, 0x804DFB34), 0x60000000,         # 18-20 remove
+            0x80010014, 0x7C0803A6, 0x38210010, 0x4E800020]     # 21-24 out
+
+
 def gameover_code(GO_AT: int = 0x80002800, GO_RET: int = 0x8003FE64, refresh: bool = True):
     code, fix, lab = [], [], {}
     def e(*xs): code.extend(xs)
@@ -241,6 +291,7 @@ STORE_ITEMS = {1, 3, 6, 8, 62, 87, 89, 90, 91, 92, 93, 94, 95, 96} | set(range(1
 BAG_CAPACITY = {162: ("bag", 28), 163: ("bag", 35), 164: ("palette", 6), 165: ("palette", 9)}
 LIST_OFFSET = {"bag": 0x120, "storage": 0x150, "palette": 0x180}
 GOLD_ORB = 85
+GUNPOWDER = 15
 ORB_ITEMS = [80, 81, 82, 83, 84, 85]     # Red, Blue, White, Green, Black, Gold
 # field/fobj_gen_item_table.atb (items from breaking / burning / vacuuming field objects): ALTB, 103 rows of
 # 300 bytes at +0x10, 25 x {u32 item, u32 count, f32 chance} per row. Rows 96-100 column 22 = the Sunny's
@@ -298,23 +349,43 @@ def wrap_comment(lines: List[str], limit: float = 16.0, max_lines: int = 3) -> O
     return text if len(out) <= max_lines and len(text) <= 111 else None
 
 
-def placeholder_comment(player: str, item: str) -> str:
-    for lines in (["An Archipelago Item!", f"It's {player}'s {item}!"],
-                  [f"It's {player}'s {item}!"],
-                  ["An Archipelago Item!", f"It belongs to {player}!"]):
+def item_kind(flags: int) -> str:
+    """Archipelago item flags -> the word used in recipe comments."""
+    return "Progression" if flags & 1 else "Useful" if flags & 2 else "Trap" if flags & 4 else "Filler"
+
+
+def _first_fit(options: List[List[str]]) -> Optional[str]:
+    for lines in options:
         text = wrap_comment(lines)
         if text and all(ord(c) < 0x2000 for c in text):
             return text
-    return "An Archipelago Item!"
+    return None
 
 
-def also_comes_comment(player: Optional[str], item: Optional[str]) -> str:
-    """Comment for a vanilla-result recipe that is a location, until it's made (then the vanilla one)."""
+def placeholder_comment(player: str, item: str, kind: Optional[str] = None) -> str:
+    """Comment for a recipe whose result is the Archipelago Item. Falls back to the item's type when the name doesn't
+    fit (or the player's name can't be shown)."""
+    opts = [["An Archipelago Item!", f"It's {player}'s {item}!"], [f"It's {player}'s {item}!"]]
+    if kind:
+        opts += [["An Archipelago Item!", f"It's {player}'s {kind} Item!"], [f"It's {player}'s {kind} Item!"],
+                 [f"An Archipelago {kind} Item!"]]
+    opts += [["An Archipelago Item!", f"It belongs to {player}!"]]
+    return _first_fit(opts) or "An Archipelago Item!"
+
+
+def also_comes_comment(player: Optional[str], item: Optional[str], kind: Optional[str] = None) -> str:
+    """Comment for a vanilla-result recipe that is a location, until it's made (then the vanilla one). Item name too
+    long -> "(player)'s <type> Item"; player's name not showable either -> "an Archipelago <type> Item" (user,
+    0.23.1: a long item name fell back to the plain text)."""
+    opts = []
     if player and item:
-        text = wrap_comment([f"This recipe also comes with {player}'s {item}!"])
-        if text and all(ord(c) < 0x2000 for c in text):
-            return text
-    return wrap_comment(["This recipe also comes with an Archipelago Item!"]) or "An Archipelago Item!"
+        opts.append([f"This recipe also comes with {player}'s {item}!"])
+    if kind:
+        if player:
+            opts.append([f"This recipe also comes with {player}'s {kind} Item!"])
+        opts.append([f"This recipe also comes with an Archipelago {kind} Item!"])
+    opts.append(["This recipe also comes with an Archipelago Item!"])
+    return _first_fit(opts) or "An Archipelago Item!"
 
 
 # "Crafting Recipes Spoil Locations" off: key-item recipes / vanilla-result recipes
@@ -455,8 +526,8 @@ class GameState:
                 # back to the Sunny only once it has been reached in the story (script 11990 has run
                 # before) and no unknown boss fight is running (leaving one leaves it running: boss HUD,
                 # barrier, softlock); otherwise the revive alone has to do
-                elif self.script_flags([11990]) and not self.boss_active():
-                    self.w(CAMP_CMD, b"\x01")
+                elif self.script_flags([11990]) and not self.boss_active() and self.on_sunny() is False:
+                    self.w(CAMP_CMD, b"\x01")             # (already on the Sunny: the trip there crashed, 0.22.1)
                 self.go_req_seen = None
         else:
             self.go_req_seen = None
@@ -578,6 +649,10 @@ class GameState:
             self.patch_traps()
         if int(sd.get("fast_traps", 0)):
             self.patch_fast_traps()
+        if int(sd.get("chopper_brook_cold_resistance", 0)):
+            self.patch_cold_resistance()
+        if int(sd.get("aquarium_open", 1)):
+            self.patch_aquarium()
         self.patched = True
 
     def patched_before(self, a: int) -> bool:
@@ -646,6 +721,39 @@ class GameState:
     # two "lifetime > 0" branches always taken, so a trap always catches and waits until it's checked.
     TRAP_SITES = [(0x80047E38, 0x901E00B4, 0x60000000), (0x80047E3C, 0x4181001C, 0x4800001C),
                   (0x80047E80, 0x901E00B4, 0x60000000), (0x80047E84, 0x41810018, 0x48000018)]
+
+    # Chopper & Brook always have Cold Resistance (docs/status_effects.md): 0x800CB2E4 (every frame) marks the player
+    # cold (+0x9C |= 0x800, no SP regen) in a cold area unless they have status 17 (endure_ice). Its
+    # "has status" branch 0x800CB35C (bne 0x800CB374) goes to a stub (free since the Walk the Sunny routine went,
+    # 0x80002740-0x80002773) that also skips the mark when the player is Chopper ([mgr]+0xA4) or Brook ([mgr]+0xB0).
+    COLD_SITE, COLD_ORIG, COLD_AT = 0x800CB35C, 0x40820018, 0x80002740
+
+    @classmethod
+    def cold_code(cls) -> List[int]:
+        at, end = cls.COLD_AT, 0x800CB374
+        def b(i, t): return 0x48000000 | ((t - (at + 4 * i)) & 0x3FFFFFC)
+        return [0x2C030000, 0x4082002C,                    # cmpwi r3,0 ; bne -> end (word 12)
+                0x3C808069, 0x8084A18C,                    # r4 = [0x8068A18C] (character manager)
+                0x80A40088,                                # r5 = player
+                0x80C400A4, 0x7C053000, 0x41820014,        # Chopper? -> end
+                0x80C400B0, 0x7C053000, 0x41820008,        # Brook? -> end
+                b(11, 0x800CB360),                         # not resistant: mark cold (original path)
+                b(12, end)]
+
+    # Aquarium / helm open from the start: the script native GameGetChapter (0x800A0F74) is only used by the Sunny
+    # touch scripts 10806 (helm: "can't" message while chapter <= 2, else Next Island menu) and 10807 (Aquarium: only
+    # after game clear or chapter > 4). Its chapter read (0x800A0F8C bl 0x800FD7C8) -> li r3,5. Code patch.
+    CHAPTER_SITE, CHAPTER_ORIG, CHAPTER_NEW = 0x800A0F8C, 0x4805C83D, 0x38600005
+
+    def patch_aquarium(self) -> None:
+        if self.u32(self.CHAPTER_SITE) == self.CHAPTER_ORIG:
+            self.w32(self.CHAPTER_SITE, self.CHAPTER_NEW)
+
+    def patch_cold_resistance(self) -> None:
+        if self.u32(self.COLD_SITE) == self.COLD_ORIG:
+            for i, x in enumerate(self.cold_code()):
+                self.w32(self.COLD_AT + i * 4, x)
+            self.w32(self.COLD_SITE, 0x48000000 | ((self.COLD_AT - self.COLD_SITE) & 0x3FFFFFC))
 
     def patch_traps(self) -> None:
         if all(self.u32(a) == orig for a, orig, _ in self.TRAP_SITES):
@@ -1049,6 +1157,15 @@ class GameState:
         if not (0x80003000 <= cur < 0x80600000) or self.u32(entry - 4) != 0xFFFFFFFF:
             self.say_once("hookslot", f"Unexpected callback {cur:08X}; instant unlocks are off.")
             return
+        sc = b"".join(struct.pack(">I", x) for x in status_code())
+        if self.rd(STATUS_AT, len(sc)) != sc:
+            self.w(STATUS_AT, sc)
+        wc = b"".join(struct.pack(">I", x) for x in wardrobe_code())
+        if self.rd(WARDROBE_AT, len(wc)) != wc:
+            self.w(WARDROBE_AT, wc)
+        if self.rd(WARDROBE_ARGS, 48) != wardrobe_args():
+            self.w(WARDROBE_ARGS, wardrobe_args())
+
         code = self._stub_code(cur)
         packed = b"".join(struct.pack(">I", x) for x in code)
         if self.rd(STUB, len(packed)) != packed:
@@ -1138,6 +1255,14 @@ class GameState:
         br(0x40820000, "unlock")                           # wait until the camp menu is closed
         emit(lis(4, 0x8000)); emit(lbz(0, 0x2F07, 4)); emit(cmpwi(0, 3))
         br(0x41820000, "restart")
+        emit(cmpwi(0, 4))
+        br(0x41820000, "costume")
+        emit(cmpwi(0, 5))
+        br(0x41820000, "status")
+        emit(cmpwi(0, 6))
+        br(0x41820000, "status")
+        emit(cmpwi(0, 8))
+        br(0x41820000, "wardrobe")
         emit(cmpwi(0, 2))
         br(0x40820000, "trip")
         emit(lis(3, 0x8000)); emit(addi(3, 3, 0x2F68))
@@ -1148,6 +1273,26 @@ class GameState:
         lab["restart"] = len(code)
         emit(lis(4, 0x8000)); emit(lwz(4, 0x2F60, 4))
         br(0x48000000, "run")
+        #   4 = Starting Costumes: the script native CharaChangeCostume with no argument (0x800A64B4; r3 = result
+        #       slot 0x80002F70 holding the "no value" object 0x8067EE4C, r4 = empty argument 0x80002F68) on the
+        #       current character: reloads it when costume +0xC0 != loaded costume +0xC4, else applies style +0xEC.
+        lab["costume"] = len(code)
+        emit(lis(3, 0x8000)); emit(addi(3, 3, 0x2F70))
+        emit(lis(4, 0x8000)); emit(addi(4, 4, 0x2F68))
+        blto(0x800A64B4)
+        br(0x48000000, "campclear")
+        #   5 / 6 = add / remove a status on the current character (status traps, tools/opuc_status_test.py):
+        #       0x804CE1A4(player) = status object; 0x804DF60C(obj, id, time) adds, 0x804DFB34(obj, id, 0) removes;
+        #       id at 0x80002F74, time at 0x80002F78 (docs/status_effects.md).
+        #       The work is in its own routine (STATUS_AT, below the Game Over code) to keep the stub small.
+        lab["status"] = len(code)
+        emit(0x7FE3FB78)                                   # mr r3, r31 (character manager)
+        blto(STATUS_AT)
+        br(0x48000000, "campclear")
+        #   8 = switch the Sunny's wardrobe touch spots on (routine WARDROBE_AT, FieldGroupEnable 10808 / 10809).
+        lab["wardrobe"] = len(code)
+        blto(WARDROBE_AT)
+        br(0x48000000, "campclear")
         lab["trip"] = len(code)
         emit(li(4, 11990))
         lab["run"] = len(code)
@@ -1178,9 +1323,239 @@ class GameState:
             code[i] = kind | (((lab[label] - i) * 4) & (0x3FFFFFC if kind == 0x48000000 else 0xFFFC))
         return code
 
+    # ---- costumes (docs/garment_vision.md) ----
+    # Character object +0xC0 costume (0 Unlimited, 1 Thriller Bark), +0xC4 costume currently loaded, +0xEC style.
+    def costume_state(self) -> Dict[int, Tuple[int, int]]:
+        m = self.chara_mgr()
+        out = {}
+        if not m:
+            return out
+        for ci in range(9):
+            o = self.u32(m + 0x90 + ci * 4)
+            if valid(o):
+                out[ci] = (self.u32(o + 0xC0), self.u32(o + 0xEC))
+        return out
+
+    def set_costume(self, ci: int, costume: int, style: int) -> bool:
+        m = self.chara_mgr()
+        o = self.u32(m + 0x90 + ci * 4) if m else 0
+        if not valid(o):
+            return False
+        self.w32(o + 0xC0, costume)
+        self.w32(o + 0xEC, style)
+        return True
+
+    def player_index(self) -> Optional[int]:
+        m = self.chara_mgr()
+        if not m:
+            return None
+        p = self.u32(m + 0x88)
+        for ci in range(9):
+            if self.u32(m + 0x90 + ci * 4) == p:
+                return ci
+        return None
+
+    # ---- status traps (docs/status_effects.md) ----
+    # A hit with no damage that carries a status, through the current character's pending hit record (processed by
+    # the game next frame like an enemy attack, so frozen / paralysis / sleep / stun also get their reaction):
+    # player + 0x34 -> damage object -> [+0] inner; record inner + 0x4C (0x34 bytes, +0x00 pending byte); status
+    # list at [inner + 0x80] = {u32 count, 12-byte entries {u32 id, u32 power, u32 time ms}}.
+    def _hit_record(self) -> Optional[Tuple[int, int]]:
+        m = self.chara_mgr()
+        p = self.u32(m + 0x88) if m else 0
+        d = self.u32(p + 0x34) if valid(p) else 0
+        inner = self.u32(d) if valid(d) else 0
+        lst = self.u32(inner + 0x80) if valid(inner) else 0
+        return (inner + 0x4C, lst) if valid(lst) else None
+
+    def hit_pending(self) -> bool:
+        r = self._hit_record()
+        return bool(r) and self.rd(r[0], 1)[0] != 0
+
+    def trap_hit(self, status: int, ms: int = 5000, power: int = 100) -> bool:
+        r = self._hit_record()
+        if not r or self.rd(r[0], 1)[0]:
+            return False                                   # no character, or a hit is already pending
+        rec, lst = r
+        self.w(lst, struct.pack(">IIII", 1, status, power, ms))
+        self.w(rec + 1, bytes(0x33))                       # flags, damage 0, reaction 0, direction 0
+        self.w32(rec + 0x34, lst)
+        self.w(rec, b"\x01")                              # pending: the game processes it next frame
+        return True
+
+    def death_hit(self) -> bool:
+        """Death Link received: a hit through the pending hit record with 9999 HP damage (+0x08 s16) at scale 1.0
+        (+0x30 f32; HP -= damage * scale, 0x8012E700, clamped at 0), so the game's own fall / next-crew-member /
+        Game Over handling plays. Trap hits leave the scale at 0, which is why they do no damage."""
+        r = self._hit_record()
+        if not r or self.rd(r[0], 1)[0]:
+            return False
+        rec, lst = r
+        self.w(lst, struct.pack(">I", 0))                  # no statuses
+        body = bytearray(0x33)
+        struct.pack_into(">h", body, 0x08 - 1, 9999)       # +0x08 HP damage
+        struct.pack_into(">f", body, 0x30 - 1, 1.0)        # +0x30 damage scale
+        self.w(rec + 1, bytes(body))
+        self.w32(rec + 0x34, lst)
+        self.w(rec, b"\x01")
+        return True
+
+    def hp(self, obj: int) -> Optional[Tuple[int, int]]:
+        """(current, max) HP of a character object: gauge = [inner + 0x40] with inner = [[obj + 0x34]] (the damage
+        object that also holds the pending hit record; 0x8012EFFC); current = [[gauge]] (0x804D8DCC), max =
+        [[gauge + 4]] (0x804D8B00)."""
+        d = self.u32(obj + 0x34) if valid(obj) else 0
+        inner = self.u32(d) if valid(d) else 0
+        gauge = self.u32(inner + 0x40) if valid(inner) else 0
+        if not valid(gauge):
+            return None
+        a, b = self.u32(gauge), self.u32(gauge + 4)
+        if not (valid(a) and valid(b)):
+            return None
+        return self.u32(a), self.u32(b)
+
+    def crew_hp(self) -> Dict[int, Tuple[int, int]]:
+        m = self.chara_mgr()
+        out: Dict[int, Tuple[int, int]] = {}
+        for ci in range(9 if m else 0):
+            h = self.hp(self.u32(m + 0x90 + ci * 4))
+            if h and 0 < h[1] < 100000:
+                out[ci] = h
+        return out
+
+    def player_obj(self) -> int:
+        m = self.chara_mgr()
+        p = self.u32(m + 0x88) if m else 0
+        return p if valid(p) else 0
+
+    def player_hp(self) -> Optional[Tuple[int, int]]:
+        p = self.player_obj()
+        return self.hp(p) if p else None
+
+    def fallen(self) -> Set[int]:
+        """Straw Hats (character index) that fell into the abyss / deep water: [obj + 0x9C] & 0x01000000 (user test
+        2026-10-28: set by a fall, which only costs some HP; it is not death)."""
+        m = self.chara_mgr()
+        out: Set[int] = set()
+        if not m:
+            return out
+        for ci in range(9):
+            o = self.u32(m + 0x90 + ci * 4)
+            if valid(o) and self.u32(o + 0x9C) & 0x01000000:
+                out.add(ci)
+        return out
+
+    def can_trap(self) -> bool:
+        """A trap may hit now: in the field, no event / menu (manager +0x78 & 0x8180), camp menu closed."""
+        m = self.chara_mgr()
+        p = self.u32(m + 0x88) if m else 0
+        if not m or not valid(p) or (self.u32(m + 0x78) & 0x8180) or self.u32(m + 0x30C):
+            return False
+        # Not during an item-get sequence (net catch result, chara_digup.cpp: player + 0x13A4 set by 0x800317D8
+        # until the result window closes); a trap there softlocked the game (user, 2026-10-28).
+        if self.rd(p + 0x13A4, 1)[0]:
+            return False
+        # Not while the Bug-Catcher Net or a Fishing Rod is out (catch / fishing animations, user's idea).
+        held = self.held_tool()
+        return held not in TRAP_BLOCKING_TOOLS
+
+    def held_tool(self) -> Optional[int]:
+        """Item id of the tool the current character has out, None if none (0x8006B654: player + 0x16C4 = the tool
+        object while one is out). The held item (0x8006B630): palette S = [player + 0x16C0], slot = [S + 0x14] +
+        3 * [S + 0x10], entry = [[S + 8] + 8] + slot * 16 = {u32 item id, u8 valid} (0x800F3DC0 / 0x800F89B4 turn the
+        id into a row pointer). -1 if a tool is out but its item can't be read."""
+        m = self.chara_mgr()
+        p = self.u32(m + 0x88) if m else 0
+        if not valid(p) or self.u32(p + 0x16C4) == 0:
+            return None
+        s = self.u32(p + 0x16C0)
+        lst = self.u32(s + 8) if valid(s) else 0
+        arr = self.u32(lst + 8) if valid(lst) else 0
+        if not valid(arr):
+            return -1
+        slot = (self.u32(s + 0x14) + 3 * self.u32(s + 0x10)) & 0xFFFF
+        e = arr + slot * 16
+        item = self.u32(e)
+        if not self.rd(e + 4, 1)[0] or not 0 < item < 0x200:
+            return -1
+        return item
+
+    def field_id(self) -> Optional[int]:
+        f = self.u32(FIELD_MGR_PTR)
+        return self.u32(f + 0x20) if valid(f) else None
+
+    def on_sunny(self) -> Optional[bool]:
+        """True on the Thousand Sunny, False on an island, None if the field can't be read."""
+        fid = self.field_id()
+        return None if fid is None else fid == SUNNY_FIELD
+
+    def request_status(self, status: int, add: bool = True, time: int = 625) -> bool:
+        """Ask the hook to add (or remove) a status on the current character (hook command 5 / 6)."""
+        if self.rd(CAMP_CMD, 1)[0] or not self.hook_active():
+            return False
+        self.w(0x80002F74, struct.pack(">II", status, time))
+        self.w(CAMP_CMD, b"\x05" if add else b"\x06")
+        return True
+
+    def request_wardrobe(self) -> bool:
+        """Ask the hook to switch the wardrobe touch spots on (hook command 8; only call on the Sunny)."""
+        if self.rd(CAMP_CMD, 1)[0] or not self.hook_active():
+            return False
+        self.w(CAMP_CMD, b"\x08")
+        return True
+
+    def refresh_costume(self) -> bool:
+        """Ask the hook to run CharaChangeCostume on the current character (reload with +0xC0 / +0xEC)."""
+        if self.rd(CAMP_CMD, 1)[0] or not self.hook_active():
+            return False
+        self.w(0x80002F68, bytes(8))
+        self.w32(0x80002F70, 0x8067EE4C)
+        self.w(CAMP_CMD, b"\x04")
+        return True
+
+    # "Walk the Sunny" (camp menu id 8) -> the wardrobe script 10809 (Costume Change, like at the wardrobe) once the
+    # Garment Box has been received: screen table entry 8 (0x8059E870 + 32) -> routine at 0x80002740 that queues
+    # the script through the hook (0x80002F60 = 10809, 0x80002F07 = 3) and then does the original "no screen" case.
+    WALK_ENTRY, WALK_ORIG, WALK_AT = 0x8059E890, 0x801AFF24, 0x80002740
+    WALK_CODE = [0x3CA08000, 0x38C02A39, 0x90C52F60, 0x38C00003, 0x98C52F07, 0x481AD7D0]
+
+    def set_walk_costumes(self, on: bool) -> None:
+        cur = self.u32(self.WALK_ENTRY)
+        if on and cur == self.WALK_ORIG:
+            for i, x in enumerate(self.WALK_CODE):
+                self.w32(self.WALK_AT + i * 4, x)
+            self.w32(self.WALK_ENTRY, self.WALK_AT)
+        elif not on and cur == self.WALK_AT:
+            self.w32(self.WALK_ENTRY, self.WALK_ORIG)
+
+    # Plant drops (fobj_gen_item_table rows 0-14 Bitter Grass / Medicinal Herbs bushes, 39-46 Nectar flowers). The
+    # column is the hit's attack type (attribute -> column table 0x80506B10): 11 = slash (bamboo only drops in 11 /
+    # 17), 17 = Pickaxe, 22 = Vacuum Cleaner; 10 / 12 / 16 / 18 / 19 = the other hits; 14 / 20 / 23 = Ashes (fire).
+    PLANT_ITEMS = {34: "Bitter Grass", 31: "Medicinal Herbs", 37: "Nectar"}
+    PLANT_ROWS = list(range(0, 15)) + list(range(39, 47))
+    PLANT_NORMAL_COLS, PLANT_SLASH_COL, PLANT_VACUUM_COL = (10, 12, 16, 17, 18, 19), 11, 22
+    # (normal, slash, vacuum) chance %: Better Plant Drop Rates (user, 0.23.3)
+    PLANT_RATES = {34: (25.0, 50.0, 75.0), 31: (60.0, 80.0, 100.0), 37: (25.0, 50.0, 75.0)}
+
+    def set_plant_drops(self) -> None:
+        for base in self.scan_cache.get("gen_item", []):
+            if self.rd(base - GEN_ITEM_OFF, 4) != b"ALTB":
+                continue
+            for r in self.PLANT_ROWS:
+                row = base + r * GEN_ITEM_ROW
+                data = self.rd(row, GEN_ITEM_ROW)
+                for cols, k in ((self.PLANT_NORMAL_COLS, 0), ((self.PLANT_SLASH_COL,), 1),
+                                ((self.PLANT_VACUUM_COL,), 2)):
+                    for c in cols:
+                        item, _n, chance = struct.unpack_from(">IIf", data, c * 12)
+                        want = self.PLANT_RATES.get(item, (None,) * 3)[k]
+                        if want is not None and chance != want:
+                            self.w(row + c * 12 + 8, struct.pack(">f", want))
+
     def set_blue_orb_spot(self, item: int) -> None:
-        """The repeatable dig spot by the Thousand Sunny (fobj_param row 96 land_shineA_type2 -> item row 71,
-        Pickaxe columns 14 / 17 = Blue Orb) gives this item instead (70 = Pure Iron Ore; 81 = vanilla)."""
+        """Every Blue Orb dig spot (fobj_param row 96 land_shineA_type2 -> item row 71, Pickaxe columns 14 / 17 =
+        Blue Orb; all on the Wooded Isle, the one by the Sunny is the repeatable one, user 2026-10-28) gives this
+        item instead (70 = Pure Iron Ore; 81 = vanilla)."""
         for base in self.scan_cache.get("gen_item", []):
             if self.rd(base - GEN_ITEM_OFF, 4) != b"ALTB":
                 continue
@@ -1188,6 +1563,40 @@ class GameState:
                 a = base + 71 * GEN_ITEM_ROW + col * 12
                 if self.u32(a) in (81, 70) and self.u32(a) != item:
                     self.w32(a, item)
+
+    # Plain-ground Pickaxe digs (0x800CF340): 12 ground types x {u32 item, f32 chance} x 2 at 0x805065C8 (main.dol
+    # data, vanilla 5% each: Handy Rock + Clay, snow / ice Ice Shard x2). A dig only counts 20 units from the last.
+    GROUND_DIG_TABLE, GROUND_DIG_ROWS = 0x805065C8, 12
+    GROUND_DIG_CHANCES = (0.05, 0.25)
+
+    def set_ground_dig_chance(self, chance: float) -> None:
+        """Higher Chance of Random Dig Items: every ground dig item chance -> chance (only known values are touched)."""
+        want = struct.pack(">f", chance)
+        known = [struct.pack(">f", c) for c in self.GROUND_DIG_CHANCES]
+        data = self.rd(self.GROUND_DIG_TABLE, self.GROUND_DIG_ROWS * 16)
+        for r in range(self.GROUND_DIG_ROWS):
+            for k in (0, 1):
+                o = r * 16 + k * 8 + 4
+                cur = data[o:o + 4]
+                if cur != want and cur in known:
+                    self.w(self.GROUND_DIG_TABLE + o, want)
+
+    # Creature drops (item/insect_prm.bin, 20 x 152 bytes at [item manager 0x805E91E0 + 0x24], count at + 0x20):
+    # +0x08 u16 drop chance in 1/100 % (rolled only when the creature is caught with the net, 0x8011F1A0).
+    INSECT_MGR, INSECT_REC = 0x805E91E0, 152
+    INSECT_VANILLA = [5000, 5000, 10000, 10000, 6000, 2500, 6000, 10000, 10000, 10000,
+                      10000, 3000, 3000, 4000, 10000, 10000, 5000, 10000, 6000, 5000]
+
+    def set_creature_drops(self, guaranteed: bool) -> None:
+        """Guaranteed Creature Drops: every net drop chance 100% (off: the vanilla chances)."""
+        n, tab = self.u32(self.INSECT_MGR + 0x20), self.u32(self.INSECT_MGR + 0x24)
+        if n != len(self.INSECT_VANILLA) or not valid(tab):
+            return
+        for i, van in enumerate(self.INSECT_VANILLA):
+            a = tab + i * self.INSECT_REC + 8
+            cur, want = struct.unpack(">H", self.rd(a, 2))[0], (10000 if guaranteed else van)
+            if cur != want and cur in (van, 10000):
+                self.w(a, struct.pack(">H", want))
 
     def strip_fragment_drops(self, vacuum_orbs: List[int]) -> None:
         """Treasure map fragment drops (kills, steals, Break Rush) become Gold Orbs with the same count and
@@ -1212,6 +1621,19 @@ class GameState:
                 cur = self.u32(a)
                 if cur in FRAGMENT_ITEMS and i < len(vacuum_orbs):
                     self.w32(a, vacuum_orbs[i])
+
+    def set_gunpowder_drops(self, chance: int) -> None:
+        """Easier Gunpowder Drops (0.24.0): the gunners' common drop chance (u16 item_dorp_ratio<0> at row + 0x24,
+        percent) where the common drop is Gunpowder. Kill drops and Nami's steals both roll it; Cat Burglar multiplies
+        the steal roll by steal_scale / 100 (300 / 400 / 500 / 550 / 600), user-tested 2026-11-02."""
+        want = struct.pack(">H", max(0, min(100, chance)))
+        for base, nrows, header in self.scan_cache.get("enemy", []):
+            if self.rd(header, 4) != b"ALTB" or not 0 < nrows <= 512:
+                continue
+            data = self.rd(base, nrows * 40)
+            for r in range(nrows):
+                if struct.unpack_from(">I", data, r * 40 + 0x18)[0] == GUNPOWDER and data[r * 40 + 0x24:r * 40 + 0x26] != want:
+                    self.w(base + r * 40 + 0x24, want)
 
     # ------------------------------------------------------------------ items: bag / found bits
     def _player_items(self) -> Optional[int]:
@@ -1563,6 +1985,44 @@ class GameState:
             self.w(row, name)
         if self.rd(row + 0x44, 0xA0) != desc:
             self.w(row + 0x44, desc)
+
+    # Fishing data (item manager, static at 0x805E91E0: +0x64 -> field/fishp.bin). 0x5C-byte spot records: +0x00
+    # island, +0x04 spot, +0x08 5 x {u32 fish, u16 weight, u16}. A bite picks among the fish whose distance window
+    # holds the lure, weighted (0x80036254), so equal weights give equal chances (Equalise Fish Rates, 0.23.0).
+    FISH_MGR, FISHP_OFF, FISHP_REC, FISHP_MAX = 0x805E91E0, 0x64, 0x5C, 8
+
+    def set_fish_rates(self, weight: int = 100) -> None:
+        p = self.u32(self.FISH_MGR + self.FISHP_OFF)
+        if not valid(p):
+            return
+        # 8 spot records; what follows in the buffer is other data (0.23.0 wrote into it: the records after the
+        # 8th don't start with 0, which held the game on New Game, user). Only records whose island is a real
+        # island id (global ids 0x4C9E-0x4CA2 = islands 0-4) are touched, and only weights that look like weights.
+        for r in range(self.FISHP_MAX):
+            rec = self.rd(p + r * self.FISHP_REC, self.FISHP_REC)
+            if not 0x4C9E <= struct.unpack_from(">I", rec, 0)[0] <= 0x4CA2:
+                break
+            for k in range(5):
+                fish, w = struct.unpack_from(">IH", rec, 8 + 8 * k)
+                if fish and 0 < w <= 1000 and w != weight:
+                    self.w(p + r * self.FISHP_REC + 8 + 8 * k + 4, struct.pack(">H", weight))
+
+    # Quick Recipes (0.23.0): every recipe ingredient that is a creature (97-116), a fish (117-136) or a Sea King part
+    # (137-139) needs just 1. Recipe rows: +4 4 x {u16 ingredient, u8 count, u8 flag}.
+    QUICK_ITEMS = range(97, 140)
+
+    def set_quick_recipes(self) -> None:
+        for room in ("workshop", "kitchen", "pharmacy"):
+            p = self._recipe_row(room, 0)
+            if not p:
+                continue
+            rows = self.rd(p, 252 * 32)
+            for r in range(32):
+                for k in range(4):
+                    o = r * 252 + 4 + 4 * k
+                    item, n = struct.unpack_from(">HB", rows, o)
+                    if item in self.QUICK_ITEMS and n > 1:
+                        self.w(p + o + 2, b"\x01")
 
     def _recipe_state_obj(self, room: str) -> Optional[int]:
         m = self.u32(ITEM_MGR_PTR)

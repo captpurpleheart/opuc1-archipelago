@@ -117,6 +117,18 @@ def rock_path(s: CollectionState, p: int) -> bool:
     return pickaxe(s, p) or blast_path(s, p)
 
 
+def fire_attack(s: CollectionState, p: int) -> bool:
+    """Fire attacks melt Ice Rocks (but give no Ice Shards): Sanji's Diable Jambe or Zoro's Single Sword Flying Dragon
+    Blaze (user, 2026-11-03). Flamethrowers also work, but they aren't in the AP yet (next island)."""
+    return (s.has_all(("Sanji", "Sanji - Diable Jambe"), p)
+            or s.has_all(("Zoro", "Zoro - Single Sword Flying Dragon Blaze"), p))
+
+
+def ice_path(s: CollectionState, p: int) -> bool:
+    """Iceberg Isle Ice Rock paths (to Parts 2, 4 and 5): the Pickaxe, Gunpowder or a fire attack."""
+    return rock_path(s, p) or fire_attack(s, p)
+
+
 def dig_or_blast(s: CollectionState, p: int) -> bool:
     """X dig spots (Clay, Marble, Pure Iron Ore): the Pickaxe, or Gunpowder (not the random plain-ground digs or the
     treasure map chests, which stay Pickaxe only)."""
@@ -183,7 +195,8 @@ SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     "Honey Bee": [(P2, net)],              # not in Part 1 (user, 2026-10-27)
     "Tree Frog": [(P2, net)],
     "Seagull": [(SUNNY, net)],             # user: on the Sunny at any time with the net
-    "Lightning Beetle": [(POST_ENERU, net)],   # Wooded Isle Part 2 outside the boss room, after Eneru
+    # Wooded Isle Part 2 outside the boss room after Eneru (net), or with Traps in Part 2 before him (user, 2026-11-03)
+    "Lightning Beetle": [(POST_ENERU, net), (P2, lambda s, p: has_material("Traps")(s, p))],
     "Rock Lizard": [(G1, net)],
     "Hercules Beetle": [(G1, net)],
     "Doctor Hornet": [(G1, net)],

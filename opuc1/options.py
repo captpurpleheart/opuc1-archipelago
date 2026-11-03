@@ -295,6 +295,13 @@ class EnemyGunpowderDropRate(Range):
     default = 20
 
 
+class StackCraftablesMakeMaxCopies(Toggle):
+    """Every stackable item can be held up to 99. Items the game crafts (or hands out) as a full stack - Traps,
+    Flamethrowers, Batteries, Bombs and the powders - normally come in their vanilla amount (for example 10 Traps,
+    30 Gunpowder, 50 Bombs). With this on, they come as a full stack of 99 instead."""
+    display_name = "Stack Craftables Make Max Copies"
+
+
 class BetterTraps(DefaultOnToggle):
     """A set trap always catches something and keeps it until you check the trap, and catches after 10 minutes of
     play; leaving the trap's area once (another zone, or off the Thousand Sunny) finishes it straight away. What it
@@ -472,6 +479,7 @@ class OPUCOptions(PerGameCommonOptions):
     include_gunpowder_logic: IncludeGunpowderLogic
     enemy_gunpowder_drop_logic: EnemyGunpowderDropLogic
     enemy_gunpowder_drop_rate: EnemyGunpowderDropRate
+    stack_craftables_make_max_copies: StackCraftablesMakeMaxCopies
     # Characters, Moves & Skills Options
     move_exp_multiplier: MoveExpMultiplier
     super_move_locations: SuperMoveLocations
@@ -534,7 +542,8 @@ OPTION_GROUPS = [
     # for options not listed here; they come first in OPUCOptions so they're in that order.
     OptionGroup("Item Options", [EarlyPickaxe, EarlyBugCatcherNet, EarlyFishingRod, EarlyVacuumCleaner,
                                  EarlyBagUpgrade, BagPaletteUpgradeItemType, TreasureMapsNeedEveryFragment,
-                                 IncludeGunpowderLogic, EnemyGunpowderDropLogic, EnemyGunpowderDropRate]),
+                                 IncludeGunpowderLogic, EnemyGunpowderDropLogic, EnemyGunpowderDropRate,
+                                 StackCraftablesMakeMaxCopies]),
     OptionGroup("Characters, Moves & Skills Options", [MoveExpMultiplier, SuperMoveLocations, CatBurglarItemType,
                                                        LightWeightItemType, FlowerPowerItemType,
                                                        ChopperBrookColdResistance]),

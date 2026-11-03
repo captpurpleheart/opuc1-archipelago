@@ -277,10 +277,10 @@ class OPUCWorld(World):
         # Iceberg Isle (user's region map, 2026-10-28)
         connect(R.SUNNY, R.I1, lambda s, p: s.has(R.ICEBERG_LOG_POSE, p))
         # ice rock routes: Pickaxe or Gunpowder (0.24.0)
-        connect(R.I1, R.I2, lambda s, p: R.rock_path(s, p) or self.iceberg_site_1(s, p))
+        connect(R.I1, R.I2, lambda s, p: R.ice_path(s, p) or self.iceberg_site_1(s, p))
         connect(R.I2, R.I3, self.iceberg_shrine_1)
-        connect(R.I3, R.I4, R.rock_path)
-        connect(R.I4, R.I5, R.rock_path)
+        connect(R.I3, R.I4, R.ice_path)          # Ice Rock paths: Pickaxe, Gunpowder or a fire attack (0.25.18)
+        connect(R.I4, R.I5, R.ice_path)
         connect(R.I4, R.ILADDER, self.iceberg_site_2)
         connect(R.I5, R.I6, self.iceberg_shrine_2)
         connect(R.I6, R.IBOSS, R.power_vacuum)
@@ -486,6 +486,7 @@ class OPUCWorld(World):
             "include_gunpowder_logic": self.options.include_gunpowder_logic.value,
             "enemy_gunpowder_drop_logic": self.options.enemy_gunpowder_drop_logic.value,
             "enemy_gunpowder_drop_rate": self.options.enemy_gunpowder_drop_rate.value,
+            "stack_craftables_make_max_copies": self.options.stack_craftables_make_max_copies.value,
             # Starting Costumes: per Straw Hat (Luffy..Brook) [costume, style] for the client
             "starting_costumes": [list(COSTUME_CHOICES[i][1][getattr(self.options, f"{w.lower()}_starting_costume")
                                                             .value][2:4]) for i, (w, _c) in enumerate(COSTUME_CHOICES)],

@@ -1,5 +1,13 @@
 # Changelog
 
+## ALPHA Build v0.25.18 - Hotfix
+Another hotfix. One new YAML option (Item Options), so grab the new `OPUC1.yaml` if you want it; older YAMLs use the vanilla amounts.
+
+- **NEW OPTION** - Crafting stacking items can now make the vanilla amount or a full 99 copies ("Stack Craftables Make Max Copies", off by default).
+  - Vanilla: 10 for Traps, 30 for Powders, 50 for Bombs.
+- **LOGIC UPDATE** - Fire-based moves such as Diable Jambe and Single Sword Flying Dragon Blaze are counted in logic for Iceberg Isle's Ice Rock Paths. They can be used to break those rocks to access new areas.
+- **LOGIC UPDATE** - Lightning Beetles are now in logic before Eneru if Traps can be made. They can be caught with Traps outside Eneru's Boss Room before defeating him.
+
 ## ALPHA Build v0.25.15 - Hotfix
 Quick hotfix, including 1 additional feature I completely forgot to look into. No new YAML options; 0.25.1 seeds and YAMLs work as they are.
 

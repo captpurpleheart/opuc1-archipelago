@@ -635,6 +635,7 @@ class GameState:
         if cur not in (ADD_USE_ORIG, NOP):
             return                                    # game code not loaded yet (Dolphin still booting)
         self.patch_costume_creation()                  # Starting Costumes at character creation (title screen)
+        self.patch_craft_copies()                      # stack craftables come in their vanilla amount (0.25.17)
         # scripts can no longer add Straw Hats
         if cur == ADD_USE_ORIG:
             self.w32(ADD_USE_CALL, NOP)
@@ -2107,7 +2108,36 @@ class GameState:
     # +4, save data), and 99 already exists in vanilla, so the menus show it.
     ITEM_TABLE_REF, ITEM_ROW, ITEM_ROWS, MAX_HAVE_OFF = 0x805E91E0 + 8, 548, 250, 286
 
-    def set_max_stacks(self, value: int = 99) -> None:
+    #
+    # Stack craftables (0.25.17): the game crafts / hands out "stack craftable" items (0x800F626C: maxHave > 1 and
+    # type 3, or Traps) as a whole stack of maxHave - crafting at 0x801CFF94 (bl 0x800F8BA0, id in r3) and the
+    # item-get at 0x800448FC (bl 0x800F8B84, r3 -> handle, [r3] = row). With 99 that made 99 Traps / Bombs /
+    # powders (user). Both calls go to CRAFT_AT, which returns the row's spare byte +311 (align00, 0 in every row)
+    # or maxHave if that's 0. The row's other spare byte +310 keeps the vanilla maxHave (written once, before it's
+    # raised), and +311 = vanilla (Stack Craftables Make Max Copies off) or 0 (on -> the 99 stack).
+    VANILLA_OFF, CRAFT_OFF = 310, 311
+    CRAFT_SITES = ((0x801CFF94, 0x800F8BA0, 2), (0x800448FC, 0x800F8B84, 0))   # site, original target, entry word
+    CRAFT_AT = 0x80002FC4                                                      # 11 words, ends 0x80002FF0
+
+    @classmethod
+    def craft_code(cls) -> List[int]:
+        return [0x81830000,                     # 0  handle entry: lwz r12, 0(r3) (row)
+                0x48000014,                     # 1  b 6
+                0x3D60805F, 0x816B91E8,         # 2-3 id entry: r11 = [0x805E91E8] (item table)
+                0x1D830224, 0x7D8B6214,         # 4-5 r12 = r11 + id * 548
+                0x886C0000 | cls.CRAFT_OFF,     # 6  lbz r3, 311(r12)
+                0x2C030000, 0x4C820020,         # 7-8 not 0 -> return it
+                0x886C0000 | cls.MAX_HAVE_OFF,  # 9  lbz r3, 286(r12)
+                0x4E800020]                     # 10
+
+    def patch_craft_copies(self) -> None:
+        if all(self.u32(a) == bl(a, t) for a, t, _ in self.CRAFT_SITES):
+            for i, x in enumerate(self.craft_code()):
+                self.w32(self.CRAFT_AT + i * 4, x)
+            for a, _t, entry in self.CRAFT_SITES:
+                self.w32(a, bl(a, self.CRAFT_AT + 4 * entry))
+
+    def set_max_stacks(self, value: int = 99, craft_max: bool = False) -> None:
         base = self.u32(self.ITEM_TABLE_REF)
         if not valid(base):
             return
@@ -2115,9 +2145,16 @@ class GameState:
         if struct.unpack_from(">I", data, self.ITEM_ROW * 40 + 0x40)[0] != 40:      # row 40 = Wood (id 40)
             return
         for r in range(self.ITEM_ROWS):
-            o = r * self.ITEM_ROW + self.MAX_HAVE_OFF
-            if 1 < data[o] < value:
-                self.w(base + o, bytes([value]))
+            row = r * self.ITEM_ROW
+            have, vanilla = data[row + self.MAX_HAVE_OFF], data[row + self.VANILLA_OFF]
+            if 1 < have < value:
+                if not vanilla:
+                    vanilla = have
+                    self.w(base + row + self.VANILLA_OFF, bytes([vanilla]))
+                self.w(base + row + self.MAX_HAVE_OFF, bytes([value]))
+            craft = 0 if craft_max else vanilla
+            if data[row + self.CRAFT_OFF] != craft:
+                self.w(base + row + self.CRAFT_OFF, bytes([craft]))
 
     def set_quick_recipes(self) -> None:
         for room in ("workshop", "kitchen", "pharmacy"):

@@ -87,6 +87,13 @@ One Piece Unlimited Cruise 1:
   # Range: 5-100
   enemy_gunpowder_drop_rate: 20
 
+  # Stack Craftables Make Max Copies: Every stackable item can be held up to 99. Items the game crafts
+  # (or hands out) as a full stack - Traps, Flamethrowers, Batteries, Bombs and the powders - normally
+  # come in their vanilla amount (for example 10 Traps, 30 Gunpowder, 50 Bombs). With this on, they come
+  # as a full stack of 99 instead.
+  # true / false
+  stack_craftables_make_max_copies: false
+
   # ---- Characters, Moves & Skills Options --------------------------------
   # Move EXP Multiplier: Moves gain levels faster: 2X to 5X move EXP (every per-level requirement
   # divided by 2, 3, 4 or 5).

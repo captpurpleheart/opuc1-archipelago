@@ -153,6 +153,7 @@ class OPUCContext(CommonContext):
         self.session_seen = 0       # GameState.sessions when per-session state was last reset
         self.keys_requested: Set[int] = set()
         self.last_was_event = False             # the last paced give started an event (0.25.11)
+        self.settle_needed = False              # something was handed over and the game hasn't been quiet since
         # Paced deliveries (0.25.2): items with events, crew members and move unlock checks wait for a quiet game
         self.quiet_since: Optional[float] = None     # when the game last became idle (None while something plays)
         self.unlock_wanted = False                   # a move unlock check is due once the game is quiet
@@ -460,7 +461,7 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
             g.set_fish_rates()
         if int(ctx.slot_data.get("quick_recipes", 0)):
             g.set_quick_recipes()
-        g.set_max_stacks()              # 0.25.15 (user test): every stackable item holds up to 99
+        g.set_max_stacks(craft_max=bool(int(sd.get("stack_craftables_make_max_copies", 0))))   # 99 stacks
         g.install_hook()
         changed = g.write_tables(moves, abilities) | g.write_coop(coop)
         if changed or new_scan:
@@ -567,6 +568,20 @@ def used_quiet(ctx: "OPUCContext", event: bool = False) -> None:
     event / pop-up of its own (key item, crew join, move unlock check)."""
     ctx.quiet_since = None
     ctx.last_was_event = event
+    ctx.settle_needed = True
+
+
+def paced_ready(ctx: "OPUCContext", seconds: float) -> bool:
+    """0.25.16 (user): only bursts needed pacing. A delivery goes out straight away unless something was handed to
+    the game and the game hasn't been quiet for `seconds` since; then it waits for that quiet stretch (which also
+    ends the burst, so the next lone item is instant again). Death Link, traps and the costume fallback still use
+    quiet_for."""
+    if not getattr(ctx, "settle_needed", False):
+        return True
+    if quiet_for(ctx, seconds):
+        ctx.settle_needed = False
+        return True
+    return False
 
 
 def key_quiet(ctx: "OPUCContext", base: float = KEY_QUIET) -> float:
@@ -590,7 +605,7 @@ def paced_events(ctx: "OPUCContext", g: "GameState") -> None:
     if not g.settled():
         return
     now = time.monotonic()
-    if ctx.unlock_wanted and ctx.give_pending is None and quiet_for(ctx, key_quiet(ctx, UNLOCK_QUIET)):
+    if ctx.unlock_wanted and ctx.give_pending is None and paced_ready(ctx, key_quiet(ctx, UNLOCK_QUIET)):
         ctx.unlock_wanted = False
         ctx.unlock_retry_at = now + UNLOCK_RETRY
         g.request_unlock_check()
@@ -677,7 +692,7 @@ def deliver(ctx: "OPUCContext", g: "GameState", key_items: List[int]) -> None:
     if not g.hook_active():
         return
     for gid in key_items:
-        if not g.found(gid) and gid not in ctx.keys_requested and not quiet_for(ctx, key_quiet(ctx)):
+        if not g.found(gid) and gid not in ctx.keys_requested and not paced_ready(ctx, key_quiet(ctx)):
             return                                  # paced: key items (most have an event) wait for a quiet game
         if any(g.found(u) or g.find_slots(u) for u in SUPERSEDED_BY.get(gid, ())):
             continue                                # already upgraded in game (e.g. net crafted): don't give it back
@@ -702,7 +717,7 @@ def deliver(ctx: "OPUCContext", g: "GameState", key_items: List[int]) -> None:
                     logger.info(f"Your bag is full: {d.name} (and anything after it) will arrive once there's room.")
                 return
             ctx.bag_full_said = False
-            if not quiet_for(ctx, FILLER_QUIET):
+            if not paced_ready(ctx, FILLER_QUIET):
                 return                              # paced: never on top of an event or another item's message
             before = g.item_count(gid)
             g.request_give(gid, n)

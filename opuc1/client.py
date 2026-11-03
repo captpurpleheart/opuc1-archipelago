@@ -58,6 +58,10 @@ MAP_FRAGMENTS = {d.name for d in ITEMS if d.name.startswith("Map ") and ", Fragm
 # Broken net back after crafting the net). (Rods and vacuum are handled through their slot bytes, not replaced.)
 SUPERSEDED_BY = {3: (2,)}
 SUNNY_FLAG = 11990          # "First Step on the Thousand Sunny": the Pickaxe is held back until then
+# The first arrival on the Sunny (script 11990) then plays the crew meeting scene 10070 (several fades and a
+# tutorial). An item event started during it (the Pickaxe's event 201 right on arrival, with Early Pickaxe) held the
+# game on a black screen (user, 0.25.1 / 0.25.2). Nothing is handed over until 10070 has finished.
+SUNNY_SCENE = 10070
 MOVE_LOCS = [(lid, c[1], c[2], c[3]) for lid, c in CHECKS_BY_KIND.get("move", [])]
 CATCH_LOCS = {c[1]: lid for lid, c in CHECKS_BY_KIND.get("catch", [])}     # fish / creature item -> location
 DUMMY_CRAFTS = {(room, row) for room, row, _, dummy in CRAFTS if dummy}
@@ -119,8 +123,7 @@ class OPUCContext(CommonContext):
         self.last_seen: Set[int] = set()
         self.owner_session = -1             # game session whose save owner was checked
         self.late_session = None            # session that was already running when the client connected
-        self.costume_session = -1           # new game session that still needs its Starting Costumes
-        self.costume_done: Set[int] = set()
+        self.costume_pending: Set[int] = set()     # Straw Hats still to get their Starting Costume (progress file)
         self.connect_checked = False
         self.save_ok = False
         self.delivered = 0          # how many received items have had their one-time delivery (consumables)
@@ -149,6 +152,16 @@ class OPUCContext(CommonContext):
         self.last_give = "none"
         self.session_seen = 0       # GameState.sessions when per-session state was last reset
         self.keys_requested: Set[int] = set()
+        self.last_was_event = False             # the last paced give started an event (0.25.11)
+        # Paced deliveries (0.25.2): items with events, crew members and move unlock checks wait for a quiet game
+        self.quiet_since: Optional[float] = None     # when the game last became idle (None while something plays)
+        self.unlock_wanted = False                   # a move unlock check is due once the game is quiet
+        self.unlock_retry_at = 0.0
+        self.crew_given: Set[int] = set()            # Straw Hats handed over so far this session
+        self.crew_session = -1
+        self.repaired: Set[int] = set()              # leftover event items already cleaned up (logged once)
+        self.arrival_scene = False                   # the first Sunny arrival scene (10070) is still to finish
+        self.last_counter: Optional[int] = None      # hook frame counter on the last pass (game running?)
 
     def on_deathlink(self, data: dict) -> None:
         super().on_deathlink(data)
@@ -213,16 +226,19 @@ class OPUCContext(CommonContext):
             self.delivered = data.get("delivered", 0)
             self.traps_done = data.get("traps", 0)
             self.traps_ahead = set(data.get("traps_ahead", []))
+            self.costume_pending = set(data.get("costumes_pending", []))
         except (OSError, ValueError):
             self.delivered = 0
             self.traps_done = 0
             self.traps_ahead = set()
+            self.costume_pending = set()
 
     def save_progress(self) -> None:
         try:
             with open(self._progress_file(), "w") as f:
                 json.dump({"delivered": self.delivered, "traps": self.traps_done,
-                           "traps_ahead": sorted(self.traps_ahead)}, f)
+                           "traps_ahead": sorted(self.traps_ahead),
+                           "costumes_pending": sorted(self.costume_pending)}, f)
         except OSError:
             pass
 
@@ -298,7 +314,10 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
     start = int(ctx.slot_data.get("starting_character", 0))
     owned_chars = {start} | {i for i, n in enumerate(CHARACTERS) if have[n]}
     ctx.owned_chars = owned_chars
-    g.enforce_crew(owned_chars, start)
+    sunny_flags = g.script_flags([SUNNY_FLAG, SUNNY_SCENE])
+    ctx.arrival_scene = SUNNY_FLAG in sunny_flags and SUNNY_SCENE not in sunny_flags
+    update_quiet(ctx, g)
+    g.enforce_crew(paced_crew(ctx, g, owned_chars, start), start)
 
     # Thousand Sunny options: 0 vanilla (Workshop open; Kitchen / Pharmacy from chapter 3, after the
     # Island 1 boss), 1 own item, 2 the room's owner, 3 both
@@ -335,12 +354,12 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
                         if have[name] and (sid not in BUILD_SITE_IDS or franky_ok)})
     g.set_monuments(not int(sd.get("robin_required_for_monuments", 0)) or 6 in owned_chars)
     maps_held = bool(int(sd.get("nami_required_for_maps", 0))) and 4 not in owned_chars
-    sunny = bool(g.script_flags([SUNNY_FLAG]))
+    sunny = sunny_flags == {SUNNY_FLAG, SUNNY_SCENE}
 
     # "Armed" items (received, held back by the client) for the Armed Items tab, in delivery priority order
     armed: List[Tuple[str, str]] = []
     if have["Pickaxe"] and not sunny:
-        armed.append(("Pickaxe", "Waiting for Thousand Sunny entry"))
+        armed.append(("Pickaxe", "Waiting for Thousand Sunny entry (and the crew's scene there)"))
     for room in ("workshop", "kitchen", "pharmacy"):
         ci = ROOM_OPTIONS[room][2]
         k = have[ROOM_ART[room]]
@@ -441,10 +460,11 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
             g.set_fish_rates()
         if int(ctx.slot_data.get("quick_recipes", 0)):
             g.set_quick_recipes()
+        g.set_max_stacks()              # 0.25.15 (user test): every stackable item holds up to 99
         g.install_hook()
         changed = g.write_tables(moves, abilities) | g.write_coop(coop)
         if changed or new_scan:
-            g.request_unlock_check()
+            ctx.unlock_wanted = True        # asked for once the game is quiet (paced_events)
         g.min_sp()
         if int(ctx.slot_data.get("disable_food_diminishing_returns", 0)):
             g.patch_food_returns()      # the game's setter always stores 0
@@ -467,6 +487,7 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
         g.set_walk_costumes(False)
         apply_starting_costumes(ctx, g)
 
+    paced_events(ctx, g)
     deliver(ctx, g, key_items)
     wardrobe(ctx, g, have)
     ctx.armed_traps = deliver_traps(ctx, g)
@@ -474,26 +495,126 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
 
 
 def apply_starting_costumes(ctx: "OPUCContext", g: "GameState") -> None:
-    """New game only: write each Straw Hat's costume (+0xC0) and style (+0xEC); the character in play is reloaded
-    through the hook (CharaChangeCostume), the others show it the next time they're switched in."""
-    if ctx.costume_session != g.sessions:
+    """Starting Costumes (new game): each Straw Hat gets their costume (+0xC0) / style (+0xEC) when they are the one
+    in play, followed straight away by the game's own costume reload (hook command 4, CharaChangeCostume).
+    0.25.5: costumes used to be written for all nine at once, leaving the eight not in play with a costume that
+    differed from their loaded model (+0xC4); the first fade back from a menu then held the game on a black screen
+    (user: only with Thriller Bark costumes, only until the save was reloaded). Who still needs theirs is kept in the
+    progress file, so it survives saving and reloading."""
+    if not ctx.costume_pending:
         return
     wanted = ctx.slot_data.get("starting_costumes")
     if not wanted:
+        ctx.costume_pending = set()
         return
-    state = g.costume_state()
     player = g.player_index()
-    for ci, (cur_c, cur_s) in state.items():
-        if ci in ctx.costume_done or ci >= len(wanted):
+    if player is None or player not in ctx.costume_pending or not quiet_for(ctx, 1.0):
+        return
+    c, st = wanted[player]
+    g.set_costume(player, c, st)
+    if g.refresh_costume():
+        ctx.costume_pending.discard(player)
+        ctx.save_progress()
+        used_quiet(ctx)
+
+
+# ---- Paced deliveries (0.25.2) -------------------------------------------------------------------------------
+# A burst of received items (someone goaling / releasing) used to start several item events, "new move" pop-ups and
+# crew joins at once; the game dropped some of them, so their effects never happened (Palette Upgrade not applied,
+# Jet Dial / Hammer Comet / Violin Strings not vanishing, maps not assembled; user 2026-11-03). Now each of those
+# waits for a quiet game, and leftovers are cleaned up afterwards.
+# 0.25.11 (user: receiving felt slower): filler 1.0 -> 0.5 s, key items 2.0 -> 1.0 s, except straight after another
+# event (key item, crew join, move unlock check), which still gets the longer gap.
+# 0.25.12 (user test): everything 0.5 s, 1.0 s when an event follows another event (crew joins and move unlock
+# checks now get the longer gap too).
+# 0.25.13 (user): crew joins are instant (no event; shrine unlocks were never paced), everything else 0.1 s, and
+# 0.5 s when an event follows another event (key item, move unlock check).
+KEY_QUIET, FILLER_QUIET, UNLOCK_QUIET, REPAIR_QUIET = 0.1, 0.1, 0.1, 4.0
+EVENT_AFTER_EVENT_QUIET = 0.1   # 0.25.14 (user): no extra gap between events, the quiet check is what matters
+UNLOCK_RETRY = 15.0
+# Items the game uses up once their move / co-op is learned, and what proves it was learned. If it was but the item
+# is still carried (the unlock pop-up was dropped in a burst), the client removes it; if it wasn't, the client asks
+# the game for another move unlock check (the pop-up plays then). Bag / Palette upgrades aren't here: the client
+# sets their sizes itself every pass.
+EVENT_ITEM_RESULTS: Dict[int, Tuple[str, Tuple[int, ...]]] = {
+    95: ("move", (4, 13)), 170: ("move", (2, 15)), 171: ("move", (5, 7)), 172: ("move", (2, 11)),
+    173: ("move", (5, 6)), 174: ("move", (7, 13)), 175: ("move", (8, 7)), 176: ("move", (2, 14)),
+    177: ("coop", (3,)),
+}
+
+
+def update_quiet(ctx: "OPUCContext", g: "GameState") -> None:
+    """Quiet = idle AND the game actually running frames: the hook counter has moved since the last pass. While the
+    game is paused or in a full-screen menu (pause / save / item menus) the hook doesn't run; a give requested then
+    fired on the first frame after the menu closed, in the middle of the fade back in, and held the game on a black
+    screen (user, 0.25.1 / 0.25.2: after unpausing / saving on the Sunny)."""
+    counter = g.hook_counter()
+    running = ctx.last_counter is not None and counter != ctx.last_counter
+    ctx.last_counter = counter
+    if running and g.settled() and g.game_idle() and not ctx.arrival_scene:
+        if ctx.quiet_since is None:
+            ctx.quiet_since = time.monotonic()
+    else:
+        ctx.quiet_since = None
+
+
+def quiet_for(ctx: "OPUCContext", seconds: float) -> bool:
+    return ctx.quiet_since is not None and time.monotonic() - ctx.quiet_since >= seconds
+
+
+def used_quiet(ctx: "OPUCContext", event: bool = False) -> None:
+    """Something was just handed to the game: the next thing waits for a fresh quiet stretch. event = it starts an
+    event / pop-up of its own (key item, crew join, move unlock check)."""
+    ctx.quiet_since = None
+    ctx.last_was_event = event
+
+
+def key_quiet(ctx: "OPUCContext", base: float = KEY_QUIET) -> float:
+    return max(base, EVENT_AFTER_EVENT_QUIET) if getattr(ctx, "last_was_event", False) else base
+
+
+def paced_crew(ctx: "OPUCContext", g: "GameState", owned: Set[int], start: int) -> Set[int]:
+    """Which Straw Hats are in the crew. 0.25.2-0.25.12 let them join one at a time after a quiet stretch; joining
+    starts no event, so since 0.25.13 everyone owned joins straight away."""
+    if ctx.crew_session != g.sessions:
+        ctx.crew_session = g.sessions
+        ctx.crew_given = (g.joined() & owned) | {start}
+    ctx.crew_given |= owned                     # 0.25.13: instant (joining starts no event)
+    ctx.crew_given &= owned | {start}
+    return set(ctx.crew_given)
+
+
+def paced_events(ctx: "OPUCContext", g: "GameState") -> None:
+    """Move unlock checks (the game's "new move" pop-ups) only on a quiet game, and a cleanup of event items whose
+    event was dropped."""
+    if not g.settled():
+        return
+    now = time.monotonic()
+    if ctx.unlock_wanted and ctx.give_pending is None and quiet_for(ctx, key_quiet(ctx, UNLOCK_QUIET)):
+        ctx.unlock_wanted = False
+        ctx.unlock_retry_at = now + UNLOCK_RETRY
+        g.request_unlock_check()
+        used_quiet(ctx, event=True)
+        return
+    if ctx.give_pending is not None or not quiet_for(ctx, REPAIR_QUIET):
+        return
+    levels = coop = None
+    for gid, (kind, arg) in EVENT_ITEM_RESULTS.items():
+        if not g.find_slots(gid):
             continue
-        c, st = wanted[ci]
-        if (cur_c, cur_s) != (c, st):
-            g.set_costume(ci, c, st)
-        if ci == player and (c, st) != (0, 0) and not g.refresh_costume():
-            continue                                # hook busy: ask again next pass (values already written)
-        ctx.costume_done.add(ci)
-    if len(ctx.costume_done) >= len(wanted):
-        ctx.costume_session = -1
+        if kind == "move":
+            levels = levels if levels is not None else g.move_levels()
+            done = levels.get(arg, 0) >= 1
+        else:
+            coop = coop if coop is not None else g.coop_levels()
+            done = coop.get(arg[0], 0) >= 1
+        if done:
+            g.remove_item(gid)
+            if gid not in ctx.repaired:
+                ctx.repaired.add(gid)
+                logger.info(f"Cleaned up item {gid}: its event had been skipped, but its effect is in place.")
+        elif now >= ctx.unlock_retry_at:
+            ctx.unlock_wanted = True             # the item is here but its move isn't: let the game check again
 
 
 def deliver(ctx: "OPUCContext", g: "GameState", key_items: List[int]) -> None:
@@ -556,12 +677,15 @@ def deliver(ctx: "OPUCContext", g: "GameState", key_items: List[int]) -> None:
     if not g.hook_active():
         return
     for gid in key_items:
+        if not g.found(gid) and gid not in ctx.keys_requested and not quiet_for(ctx, key_quiet(ctx)):
+            return                                  # paced: key items (most have an event) wait for a quiet game
         if any(g.found(u) or g.find_slots(u) for u in SUPERSEDED_BY.get(gid, ())):
             continue                                # already upgraded in game (e.g. net crafted): don't give it back
         if not g.found(gid) and gid not in ctx.keys_requested:
             ctx.keys_requested.add(gid)
             g.request_give(gid)
             ctx.give_pending = ("key", gid, now, 0, None)
+            used_quiet(ctx, event=True)
             return
         if not g.found(gid) and gid in ctx.keys_requested:
             g.ensure_key_item(gid)                         # asked once already this session
@@ -578,9 +702,12 @@ def deliver(ctx: "OPUCContext", g: "GameState", key_items: List[int]) -> None:
                     logger.info(f"Your bag is full: {d.name} (and anything after it) will arrive once there's room.")
                 return
             ctx.bag_full_said = False
+            if not quiet_for(ctx, FILLER_QUIET):
+                return                              # paced: never on top of an event or another item's message
             before = g.item_count(gid)
             g.request_give(gid, n)
             ctx.give_pending = ("filler", gid, now, before, None)
+            used_quiet(ctx)
             return
         ctx.delivered += 1
         g.write_delivered(ctx.delivered)
@@ -629,7 +756,7 @@ def death_link(ctx: "OPUCContext", g: "GameState") -> None:
     ctx.hp_prev = hp
     ctx.fallen_prev = down
     ctx.go_prev = go
-    if ctx.death_pending and g.on_sunny() is False and g.can_trap() and g.death_hit():   # never on the Sunny
+    if ctx.death_pending and g.on_sunny() is False and quiet_for(ctx, 1.0) and g.can_trap() and g.death_hit():   # never on the Sunny
         logger.info(f"Death Link from {ctx.death_pending}: your Straw Hat takes a fatal hit.")
         ctx.death_pending = None
         ctx.death_applied_at = now
@@ -685,7 +812,7 @@ def deliver_traps(ctx: "OPUCContext", g: "GameState") -> List[Tuple[str, str]]:
     # 0.22.1); other traps play past them. None = not known yet: Burn waits too.
     waiting = [i for i in range(ctx.traps_done, len(traps)) if i not in ctx.traps_ahead]
     playable = [i for i in waiting if traps[i] != "Burn Trap" or sunny is False]
-    if st is None and playable and g.settled() and g.can_trap():
+    if st is None and playable and g.settled() and quiet_for(ctx, 1.0) and g.can_trap():
         i = playable[0]
         name = traps[i]
         ms = TRAP_TIME_MS.get(name, TRAP_MS)
@@ -819,6 +946,8 @@ async def game_loop(ctx: OPUCContext) -> None:
                                    "items are given for it: go back to the title screen (reset) and load your save "
                                    "again. Next time, connect the client at the title screen before loading.")
             g.apply_patches(ctx.slot_data)
+            # Starting Costumes: built into the Straw Hats at creation (anyone in the default costume / style)
+            g.set_costume_table(ctx.slot_data.get("starting_costumes"))
             g.rename_placeholder()
             g.set_iron_scrap_gold(bool(int(ctx.slot_data.get("iron_scrap_gives_gold_energy", 0))))
             ctx.step = "table search"
@@ -832,9 +961,15 @@ async def game_loop(ctx: OPUCContext) -> None:
                 if owner is not None:
                     ctx.owner_session = g.sessions
                     ctx.save_ok = owner in ("this", "fresh")
-                    if owner == "fresh":            # a new game: put on the Starting Costumes
-                        ctx.costume_session = g.sessions
-                        ctx.costume_done = set()
+                    if owner == "fresh":            # a new game: Starting Costumes
+                        # normally already built in (creation override); anyone who isn't (client connected late,
+                        # or Dolphin had already run the constructor before the patch) gets theirs when switched in.
+                        # 0.25.9: decided by what each Straw Hat actually has, not by whether the patch is in place
+                        wanted = ctx.slot_data.get("starting_costumes") or []
+                        state = g.costume_state()
+                        ctx.costume_pending = {ci for ci, cs in enumerate(wanted)
+                                               if tuple(cs) != (0, 0) and ci in state and state[ci] != tuple(cs)}
+                        ctx.save_progress()
                     if not ctx.save_ok:
                         logger.warning("This save doesn't belong to this seed and slot ("
                                        + ("made with another seed or slot" if owner == "other"

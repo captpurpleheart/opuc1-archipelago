@@ -565,6 +565,59 @@ class GameState:
         """In a loaded save for a few seconds (not on the title screen, loading or resetting)."""
         return self.game_since is not None and time.monotonic() - self.game_since >= wait
 
+    # Starting Costumes (0.25.10): the save-data getters. Every Straw Hat's costume and style come from the save data
+    # through two getters: costume 0x80103850(data, id, slot) (u16 at slot * 132 + id * 12 + 0x9C) and style
+    # 0x80103944 (u32 at + 0xA0); id is kept in r30. Readers: the character constructor 0x80057014 (0x800573C0 /
+    # 0x800573D4, then +0xC4 = +0xC0 and the model loads) AND the save loader 0x8006ECA8 (0x8006F0A8 / 0x8006F374),
+    # which runs after the constructor and re-reads +0xC0 / +0xEC. 0.25.8 only patched the constructor, so the
+    # models loaded in the Starting Costume (+0xC4 = 1) and the loader then put +0xC0 back to 0 (user test on
+    # 0.25.9: costume 0, loaded 1). Now the getters themselves turn a 0 into the client's table (0x80002FB0: 9
+    # costumes, then 9 styles) for ids 0-8, so every reader agrees: built in the costume, no mismatch, no reload.
+    # The save serializer 0x8006E8A0 writes +0xC0 / +0xEC back, so it sticks once saved. A costume other than the
+    # default in the save (changed at a wardrobe) is kept; choosing Unlimited / style 0 again at a wardrobe falls
+    # back to the Starting Costume on the next load.
+    #   0x801038B4 rlwinm r3, r0, 0, 16, 31 (costume)  -> bl COSTUME_AT
+    #   0x801039A4 lwz r3, 160(r3)          (style)    -> bl COSTUME_AT + 12
+    COSTUME_GETTERS = ((0x801038B4, 0x5403043E), (0x801039A4, 0x806300A0))
+    COSTUME_STORES = ((0x800573C4, 0x907400C0), (0x800573D8, 0x907400EC))   # 0.25.8 patch: undo if still there
+    COSTUME_OLD_SITES = ((0x800573C0, 0x80103850), (0x800573D4, 0x80103850))  # 0.25.6 patch: undo if still there
+    COSTUME_AT, COSTUME_TABLE = 0x800029C0, 0x80002FB0
+
+    @classmethod
+    def costume_code(cls) -> List[int]:
+        t = cls.COSTUME_TABLE & 0xFFFF
+        return [0x5403043E, 0x39800000 | t, 0x48000010,          # 0-2  costume: original ; li r12, table ; b 6
+                0x806300A0, 0x39800000 | (t + 9),                # 3-4  style: original ; li r12, table + 9
+                0x60000000,                                      # 5
+                0x2C030000, 0x4C820020,                          # 6-7  not 0 -> return it
+                0x281E0009, 0x4C800020,                          # 8-9  id >= 9 -> return it
+                0x3D8C8000, 0x7C6CF0AE,                          # 10-11 r3 = table[id] (lbzx r3, r12, r30)
+                0x4E800020]                                      # 12
+
+    def patch_costume_creation(self) -> None:
+        for a, target in self.COSTUME_OLD_SITES:          # a 0.25.6 patch from this Dolphin session
+            if self.u32(a) != bl(a, target) and (self.u32(a) >> 26) == 18:
+                self.w32(a, bl(a, target))
+        for a, orig in self.COSTUME_STORES:               # a 0.25.8 patch from this Dolphin session
+            if self.u32(a) != orig and (self.u32(a) >> 26) == 18:
+                self.w32(a, orig)
+        if all(self.u32(a) == orig for a, orig in self.COSTUME_GETTERS):
+            for i, x in enumerate(self.costume_code()):
+                self.w32(self.COSTUME_AT + i * 4, x)
+            for k, (a, _orig) in enumerate(self.COSTUME_GETTERS):
+                self.w32(a, bl(a, self.COSTUME_AT + 12 * k))
+
+    def set_costume_table(self, wanted: Optional[List[List[int]]]) -> None:
+        """[costume, style] per Straw Hat used for anyone built with the default (0) costume / style."""
+        wanted = list(wanted or [])[:9] + [[0, 0]] * (9 - len(wanted or []))
+        data = bytes([c for c, _ in wanted] + [st for _, st in wanted])
+        if self.rd(self.COSTUME_TABLE, len(data)) != data:
+            self.w(self.COSTUME_TABLE, data)
+
+    def costume_override_live(self) -> bool:
+        a = self.COSTUME_GETTERS[0][0]
+        return self.u32(a) == bl(a, self.COSTUME_AT)
+
     def apply_patches(self, slot_data: Optional[dict] = None) -> None:
         """Code patches. They only work if written before the game first runs that code (title screen)."""
         if self.patched:
@@ -581,6 +634,7 @@ class GameState:
         cur = self.u32(ADD_USE_CALL)
         if cur not in (ADD_USE_ORIG, NOP):
             return                                    # game code not loaded yet (Dolphin still booting)
+        self.patch_costume_creation()                  # Starting Costumes at character creation (title screen)
         # scripts can no longer add Straw Hats
         if cur == ADD_USE_ORIG:
             self.w32(ADD_USE_CALL, NOP)
@@ -1189,6 +1243,40 @@ class GameState:
         """The hook doesn't give items while this is set (character manager +0x78 & 0x8000)."""
         m = self.chara_mgr()
         return bool(m) and bool(self.u32(m + 0x78) & 0x8000)
+
+    def game_idle(self) -> bool:
+        """Nothing is playing (0.25.2, paced deliveries): in the field, no event / dialogue / menu (manager +0x78 &
+        0x8180), camp menu closed, no item-get sequence (player + 0x13A4), and no hook command, give or unlock check
+        waiting. Items, crew members and move unlock checks are only handed over after a stretch of this, so their
+        events and pop-ups play one at a time (a burst of them made the game drop some, user 2026-11-03)."""
+        m = self.chara_mgr()
+        p = self.u32(m + 0x88) if m else 0
+        if not m or not valid(p) or (self.u32(m + 0x78) & 0x8180) or self.u32(m + 0x30C):
+            return False
+        if self.rd(p + 0x13A4, 1)[0]:
+            return False
+        return not (self.rd(CAMP_CMD, 1)[0] or self.rd(GIVE_FLAG, 1)[0] or self.rd(HOOK_FLAG, 1)[0])
+
+    def hook_counter(self) -> int:
+        """Bumped by the hook every frame the game runs its field update (not while paused or in a full-screen
+        menu)."""
+        return self.rd(HOOK_COUNTER, 1)[0]
+
+    def joined(self) -> Set[int]:
+        """Straw Hats whose joined flag (manager + 0x1CC + i * 4, bit 0) is set."""
+        m = self.chara_mgr()
+        return {i for i in range(9) if m and self.u32(m + 0x1CC + i * 4) & 1}
+
+    def capacity(self, list_name: str) -> int:
+        o = self._player_items()
+        return self.u32(o + LIST_OFFSET[list_name]) if o else 0
+
+    def remove_item(self, item: int) -> int:
+        """Clear every bag / palette / Storage slot holding this item; returns how many slots were cleared."""
+        slots = self.find_slots(item)
+        for a in slots:
+            self.w(a, bytes(16))
+        return len(slots)
 
     def give_busy(self) -> bool:
         return self.rd(GIVE_FLAG, 1)[0] != 0
@@ -2010,6 +2098,26 @@ class GameState:
     # Quick Recipes (0.23.0): every recipe ingredient that is a creature (97-116), a fish (117-136) or a Sea King part
     # (137-139) needs just 1. Recipe rows: +4 4 x {u16 ingredient, u8 count, u8 flag}.
     QUICK_ITEMS = range(97, 140)
+
+    # Max hold count (0.25.15, user test): item/item_src.en.atb, loaded at [item manager 0x805E91E0 + 8], 250 rows of
+    # 548 bytes (+0x40 u32 id, +286 u8 maxHave, read through 0x800F8B84 / 0x800F8BA0 by every bag / palette / Storage
+    # / give path). Vanilla: creatures 5; medicine, Traps, Kuwagata, Orbs, food 10; materials 20; powders, Bitter
+    # Grass 30; Flamethrowers / Batteries / Bombs 50; 綿毛 already 99. Every stackable row (maxHave > 1) -> 99;
+    # one-per-slot items (tools, key items, fish, maps; 0 or 1) are left alone. The count is a byte everywhere (slot
+    # +4, save data), and 99 already exists in vanilla, so the menus show it.
+    ITEM_TABLE_REF, ITEM_ROW, ITEM_ROWS, MAX_HAVE_OFF = 0x805E91E0 + 8, 548, 250, 286
+
+    def set_max_stacks(self, value: int = 99) -> None:
+        base = self.u32(self.ITEM_TABLE_REF)
+        if not valid(base):
+            return
+        data = self.rd(base, self.ITEM_ROW * self.ITEM_ROWS)
+        if struct.unpack_from(">I", data, self.ITEM_ROW * 40 + 0x40)[0] != 40:      # row 40 = Wood (id 40)
+            return
+        for r in range(self.ITEM_ROWS):
+            o = r * self.ITEM_ROW + self.MAX_HAVE_OFF
+            if 1 < data[o] < value:
+                self.w(base + o, bytes([value]))
 
     def set_quick_recipes(self) -> None:
         for room in ("workshop", "kitchen", "pharmacy"):

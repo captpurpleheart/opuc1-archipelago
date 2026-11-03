@@ -1,5 +1,13 @@
 # Changelog
 
+## ALPHA Build v0.25.15 - Hotfix
+Quick hotfix, including 1 additional feature I completely forgot to look into. No new YAML options; 0.25.1 seeds and YAMLs work as they are.
+
+- **NEW FEATURE** - Stackable items can now be stacked up to 99.
+- **FIX** - Mass-item receiving has been made more consistent. The client now waits for a quiet moment, so events don't overlap and get missed (such as map fragment finds, character dialogue and key items like Jet Dial/Tone Dial/Vision Dial not removing themselves like they're supposed to). Release on New Game has been tested, no items/events were missed.
+- **FIX** - Fixed a black screen hold that would occur the first time un-pausing on the Thousand Sunny when starting with Thriller Bark outfits.
+  - Note: Switching your outfits back to Unlimited later with the Garment Box Wardrobes may reset to your Starting Costumes upon reloading a Save.
+
 ## ALPHA Build v0.25.1 - "The Iceberg Isle Scope"
 The Iceberg Isle is here! Our biggest update yet, with tons of new options and quality of life changes!
 

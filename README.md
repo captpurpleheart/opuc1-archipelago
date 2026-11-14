@@ -3,27 +3,33 @@
 An [Archipelago](https://archipelago.gg) world and Dolphin client for **One Piece Unlimited Cruise Part 1: The
 Treasure Beneath the Waves** (Wii, PAL `ROUPAF`).
 
-> **Alpha.** This release covers the **Thousand Sunny, Island 1 (Wooded Isle), Island 2 (Gorge Isle), Island 3
-> (Iceberg Isle) and the final island (Central Isle)**. Island 4 is planned. Please report bugs!
+> **Feature complete.** Every island is in: the **Thousand Sunny, Wooded Isle, Gorge Isle, Iceberg Isle, Cave Isle
+> and the final island (Central Isle)**. Please report bugs!
 >
-> Latest: **0.25.18** (hotfix for 0.25.1 "The Iceberg Isle Scope") - see [CHANGELOG.md](CHANGELOG.md).
+> Latest: **1.0.0** (First Feature Complete Build) - see [CHANGELOG.md](CHANGELOG.md).
 
 ## What's randomized
 
-**Locations** (about 440 with the default options): move level-ups (and optionally super / co-op move
+**Locations** (about 560 with the default options): move level-ups (and optionally super / co-op move
 level-ups), story events, ambushes and bosses (including the secret boss), treasure chests and map dig spots,
 Stone Monuments, Gabri Shrines and Build Sites, the first craft of each Development / Cooking / Compounding
-recipe, and (optionally) catching each fish and creature for the first time.
+recipe (plus the Extra Recipes and Franky's Supplies trades), and (optionally) catching each fish and creature for
+the first time and picking up each material for the first time (Materialsanity).
 
-**Goal** (option): "God" Eneru, Gecko Moria, Aokiji, or the Doom Guardian on Central Isle (default). Every island
-is in every seed. The Gorge Isle, Iceberg Isle and Central Isle are unlocked by Archipelago items, so they can be
-reached much earlier than in the base game.
+**Goal** (option): "God" Eneru, Gecko Moria, Aokiji, Blackbeard, or the Doom Guardian on Central Isle (default),
+optionally after beating every island boss or every boss. Every island is in every seed. The Gorge Isle, Iceberg
+Isle, Cave Isle and Central Isle are unlocked by Archipelago items, so they can be reached much earlier than in the
+base game.
 
 **Items:** the Straw Hats (you start with one), moves, co-op moves and abilities (including the Arts), tools and
 key items (Pickaxe, Bug-Catcher Net, Vacuum Cleaner, Fishing Rod and upgrades, etc), Usopp's Workshop / Sanji's
-Kitchen / Chopper's Pharmacy, the islands, Gabri levels, shrine and build site access, "The Final Door",
-treasure map fragments, and filler (food and medicine, also in packages of 3 and 5, Kuwagata and Orbs), plus
-optional status traps (Burn, Poison, Frozen, Paralysis, Sleep, Stun).
+Kitchen / Chopper's Pharmacy / Franky's Supplies, the islands, Gabri levels (or per-colour Energy levels), shrine
+and build site access, The Wherever Cannon, "The Final Door", treasure map fragments, and filler (food and medicine,
+also in packages of 3 and 5, Kuwagata, Orbs and Old Gold Coins), plus optional status traps (Burn, Poison, Frozen,
+Paralysis, Sleep, Stun).
+
+**Energy Link** (option): convert Gabri's Energy into the multiworld's shared bank and withdraw it again, in the
+client's Gabri Energy tab (1 Energy = 10 MJ, Gold 20 MJ; converting keeps 80%).
 
 **Death Link** (option): a Straw Hat being defeated (and, optionally, falling into the abyss / deep water) sends a
 death; a received death knocks out the Straw Hat you're controlling once it's safe (never on the Thousand Sunny).
@@ -31,16 +37,20 @@ death; a received death knocks out the Straw Hat you're controlling once it's sa
 Other quality-of-life changes the client makes:
 - No Game Over: the party is revived instead. Boss fights restart, ambushes carry on, and elsewhere you're
   taken back to the Thousand Sunny.
+- Archipelago messages in game: items you send and receive are shown on screen (`/messages` in the client to
+  change or turn them off).
 - Received items arrive through the game's own "obtained" messages. The **Armed Items** tab shows anything the
   client is still holding back and why (Pickaxe until you reach the Thousand Sunny, a full bag, YAML option settings).
 - Recipe descriptions show which item a recipe's location holds (optional).
 - The Database menu is open from the start (fish / creature checks are read from it).
-- Treasure map drops from enemies are Gold Orbs instead; the Sunny's dust piles give Orbs.
+- Treasure map drops from enemies are Gold Orbs instead; the Sunny's dust piles give Orbs (Old Gold Coins with
+  Franky's Supplies).
 - No "An Idea!" recipe popups (the client shows recipes itself).
 - The Sunny's Aquarium (fish tank storage) and the helm's Next Island menu are open from the start.
-- The client window shows your Gabri Level next to the Connect button.
+- The **Gabri Energy** tab shows each Energy colour's level and cap.
+- Storage holds 45 items (option, on by default).
 - Optional (see the YAML): better creature traps, guaranteed creature drops, better plant / random dig / Gunpowder
-  drop rates, equal fish rates, quick fish / creature recipes, Iron Scrap giving Gold Energy, the repeatable dig
+  drop rates, equal fish rates, easier fish, quick fish / creature recipes, Iron Scrap giving Gold Energy, the repeatable dig
   spot by the Thousand Sunny giving Pure Iron Ore, Chopper & Brook immune to the cold, starting costumes.
 
 ## Requirements
@@ -66,25 +76,31 @@ Other quality-of-life changes the client makes:
    reset to the title screen and load again.
 7. Start a new game (or load a save from this seed) and keep the client open while you play.
 
+**Known issue:** don't load a save after quitting to the title screen (it can hang on a black screen). Close the
+game, start it again (client at the title screen) and load.
+
 If the client reports that dolphin-memory-engine is missing, install it into the Python that runs Archipelago:
 `pip install dolphin-memory-engine`.
 
 ## Options
 
 Grouped as in the YAML (every option is explained there):
-- **Game Options** - starting character, goal, Death Link, falling causes a Death Link.
-- **Item Options** - early Pickaxe / Bug-Catcher Net / Fishing Rod / Vacuum Cleaner / Bag Upgrades, Bag & Palette
+- **Game Options** - starting character, goal, extra Final Door requirement, Death Link, falling causes a Death Link.
+- **Gabri Options** - Gabri Energy items (levels or per colour), starting Gabri Energy, how many Gabri level items,
+  Energy Link, Wherever Cannon unlock.
+- **Item Options** - Materialsanity, early Pickaxe / Bug-Catcher Net / Fishing Rod / Vacuum Cleaner / Bag Upgrades, Bag & Palette
   upgrade item type, treasure maps requiring every fragment, Gunpowder logic (on / off, enemy drops in logic or
-  not, or only with Nami's Whirlwind) and the gunners' Gunpowder drop rate.
+  not, or only with Nami's Whirlwind), the gunners' Gunpowder drop rate, craftables making max copies.
+- **Crafting Recipe Options** - what opens each crafting room (including start with it), Arts requiring their Straw
+  Hat, Franky's Supplies (on / off, unlock, Franky for Art of Supplying), Extra Crafting Recipes, quick recipes.
 - **Characters, Moves & Skills Options** - faster move EXP (2X-5X), Super Move Locations (off / on / unimportant),
-  Cat Burglar, Light Weight and Flower Flower Power item types, Chopper & Brook always cold-resistant.
+  Chopper & Brook always cold-resistant, Nami for treasure maps, Robin for Stone Monuments, Franky for Build Sites,
+  Cat Burglar, Light Weight and Flower Flower Power item types.
 - **Fishing & Bug-Catching Options** - Fishsanity, Creaturesanity, how many of each, combined rod / line levels,
-  number of rod upgrade items, equal fish rates, better traps, guaranteed creature drops, quick recipes.
+  number of rod upgrade items, equal fish rates, easier fish, better traps, guaranteed creature drops.
 - **Quality of Life Options** - recipe discovery through Arts, recipe descriptions that spoil locations, no
   diminishing returns for food, Iron Scrap giving Gold Energy, Blue Orb dig spots giving Pure Iron Ore, better random
-  dig item rates, better plant drop rates.
-- **Thousand Sunny & Crew Gating Options** - what opens each crafting room (including start with it), Arts requiring
-  their Straw Hat, Nami for treasure maps, Robin for Stone Monuments, Franky for Build Sites.
+  dig item rates, better plant drop rates, Expanded Storage.
 - **Starting Costumes** - each Straw Hat's outfit (Unlimited or Thriller Bark, and its style).
 - **Filler & Trap Weighting Options** - quality / bundle weighting, the food / medicine / other mix, and traps.
 

@@ -5,6 +5,7 @@ Addresses come from the research notes (project docs opuc-*.md); every write che
 """
 import struct
 import time
+import zlib
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import dolphin_memory_engine as dme
@@ -34,7 +35,8 @@ FLAG_LIST = 0x805E8B04          # save-data sections, found by name
 DELIVERED_SECTION, DELIVERED_OFFSET, DELIVERED_MARK = "EventFuncEndFlag", 0xD68, 0x4150
 ITEM_NAMES_PTR = 0x805E91E8     # item table, 0x224-byte rows
 RECIPE_ROWS = 0x805E9220        # + room*4 -> 252-byte recipe rows
-ROOM_INDEX = {"workshop": 0, "kitchen": 1, "pharmacy": 2}
+ROOM_INDEX = {"workshop": 0, "kitchen": 1, "pharmacy": 2, "franky": 3}    # franky = dev2, Franky's Supplies
+CRAFT_ROOMS = ("workshop", "kitchen", "pharmacy")
 
 PLACEHOLDER = 86                # "Archipelago Item"
 PLACEHOLDER_NAME = "Archipelago Item"
@@ -50,8 +52,11 @@ CHANGE_RESULT, CHANGE_ORIG = 0x800A6270, 0x7C7D1B78                    # start-c
 ROOM_SITES = {"kitchen": (0x801B07B8, 0x80002F02), "pharmacy": (0x801B0808, 0x80002F03)}
 ROOM_ORIG_MR, ROOM_ORIG_CMP = 0x7FE3FB78, 0x2C030002
 SPOT_GATE = 0x80002E00
-SPOT_GATE_CODE = [0x2806000F, 0x4181001C, 0x3C808000, 0x38842F10, 0x7C8430AE,
-                  0x2C040000, 0x40820008, 0x38C0000A, 0x7CC43378, 0x4E800020]
+# Camp menu n (0..15) closed in SPOT_TABLE -> menu 10 (nothing), unless Franky's Supplies is opening (its flag set by
+# the touch redirect below: the Workshop menu then opens as Franky's, even with the Workshop itself closed; 0.30.0)
+SPOT_GATE_CODE = [0x2806000F, 0x4181002C, 0x3C808000, 0x38842F10, 0x7C8430AE,
+                  0x2C040000, 0x40820018, 0x3C808000, 0x888420F0, 0x2C040000, 0x40820008,
+                  0x38C0000A, 0x7CC43378, 0x4E800020]
 SPOT_TABLE = 0x80002F10
 SPOT_CALL, SPOT_ORIG = 0x800BA914, 0x7CC43378
 ROOM_SPOT = {"kitchen": 2, "pharmacy": 3, "workshop": 4}
@@ -66,6 +71,196 @@ WS_CODE = [0x3C608000, 0x88632F04, 0x48000000 | ((0x801B0858 - 0x80002E48) & 0x3
 STELE_IDS = [11651, 11652, 11653, 12651, 12652, 13651, 13652, 14651, 14652, 15800]
 RUN_SCRIPT, RUN_SCRIPT_ORIG = 0x8009F018, 0x9421FFB0
 STELE_CODE_AT, STELE_BYTE = 0x80002E60, 0x80002F09
+
+
+# ---- Franky's Supplies (0.30.0; tested with tools/opuc_franky.py). The crafting menu's Workshop setup, while FR_FLAG is
+# set, takes the dev2 recipe set (+0x0C), Franky (+0xAC) and his skill type 16 (Supply, "Art of Supplying") instead of
+# Usopp's set / Art of Development (8); recipe levels then check Art of Supplying. FR_FLAG is set by:
+# - the field touch dispatcher (0x80045950 `mr r4, r29` before the script call): the outside Storage spots (script
+#   10801, |z| < 30 at object + 0x1BC; the inside one is at z 42.98) run the Workshop script 10804 instead, while
+#   FR_OPEN is set (Franky's Supplies unlocked);
+# - the pause menu's Instructions: A in the Development tab's recipe view switches Usopp's / Franky's lists.
+# Code at 0x80002000-0x800021FF and 0x80002600 (free low memory; the caption text runs to 0x8000251F).
+# FR_ACT (0.30.1): the open crafting menu is Franky's (FR_FLAG copied at setup). After a craft the menu refreshes its
+# level (0x801CC350: menu type 4 -> Usopp, skill 8 at 0x801CC3D0 / 0x801CC3D4); with FR_ACT that's Franky / 16 too
+# (user, 0.30.0: crafting showed "Development Lv.0" until the menu was reopened).
+FR_FLAG, FR_SHOW, FR_PEND, FR_OPEN, FR_ACT = 0x800020F0, 0x800020F1, 0x800020F2, 0x800020F3, 0x800020F4
+FR_REFRESH_SITE, FR_REFRESH_ORIG, FR_REFRESH_AT = 0x801CC3D4, 0x38800008, 0x800020B0
+FR_B_AT, FR_SET_AT, FR_CHR_AT, FR_NAME_AT, FR_DONE_AT = 0x80002000, 0x80002020, 0x80002040, 0x80002070, 0x80002090
+FR_SEL_AT, FR_A_AT, FR_UPD_AT, FR_TOUCH_AT = 0x80002100, 0x80002110, 0x80002180, 0x80002600
+FR_TOUCH_SITE, FR_TOUCH_ORIG = 0x80045950, 0x7FA4EB78                      # mr r4, r29
+FR_SITES = [(0x801CB930, 0x80030000, FR_SET_AT), (0x801CB938, 0x83650098, FR_CHR_AT),
+            (0x801CB970, 0x28000008, FR_NAME_AT), (0x801CB9A8, 0x7C651B78, FR_DONE_AT),
+            (FR_REFRESH_SITE, FR_REFRESH_ORIG, FR_REFRESH_AT)]
+FR_VT_UPD, FR_VT_SEL, FR_UPD_ORIG, FR_SEL_ORIG = 0x8059D9B8, 0x8059D9CC, 0x8015A138, 0x8015A674
+FR_A_SITE, FR_A_ORIG, FR_B_SITE, FR_B_ORIG, MENU_POP = 0x801CBE98, 0x2C000000, 0x801CBEBC, 0x4BFB3DBD, 0x8017FC78
+STORAGE_SCRIPT, WORKSHOP_SCRIPT, SUPPLY_SKILL = 10801, 10804, 16
+
+
+def _b(at: int, to: int, link: int = 0) -> int:
+    return 0x48000000 | link | ((to - at) & 0x3FFFFFC)
+
+
+def franky_code() -> List[Tuple[int, List[int]]]:
+    f, sh, pd, op = FR_FLAG & 0xFFFF, FR_SHOW & 0xFFFF, FR_PEND & 0xFFFF, FR_OPEN & 0xFFFF
+    setsel = [0x3D808000, 0x880C0000 | f, 0x2C000000, 0x80030000, 0x4D820020,
+              0x38800000 | SUPPLY_SKILL, 0x8003000C, 0x4E800020]
+    chara = [0x3D808000, 0x880C0000 | f, 0x2C000000, 0x83650098, 0x4D820020,
+             0x836500AC, 0x2C1B0000, 0x4C820020, 0x83650098, 0x4E800020]
+    name = [0x3D808000, 0x896C0000 | f, 0x2C0B0000, 0x4082000C, 0x28000008, 0x4E800020,
+            0x28000000 | SUPPLY_SKILL, 0x4E800020]
+    act = FR_ACT & 0xFFFF
+    done = [0x7C651B78, 0x3D808000, 0x896C0000 | f, 0x996C0000 | act,   # FR_ACT = FR_FLAG
+            0x39600000, 0x996C0000 | f, 0x4E800020]                       # FR_FLAG = 0
+    # level refresh after a craft: r3 = Usopp, r4 = character manager (li r4, 8 replaced)
+    refresh = [0x3D808000, 0x880C0000 | act, 0x2C000000, 0x4182001C,     # not Franky's -> plain
+               0x800400AC, 0x2C000000, 0x41820010,                       # Franky not loaded -> plain
+               0x7C030378, 0x38800000 | SUPPLY_SKILL, 0x4E800020,        # r3 = Franky; r4 = 16
+               0x38800008, 0x4E800020]                                   # plain: li r4, 8
+    # touch: outside Storage spots -> Workshop script as Franky's Supplies (r0 / r11 / r12 are free here)
+    touch = [0x7FA4EB78,                       # 0  mr r4, r29 (original)
+             0x2C040000 | STORAGE_SCRIPT,      # 1  cmpwi r4, 10801
+             0x4C820020,                       # 2  bnelr
+             0x3D808000,                       # 3  lis r12, 0x8000
+             0x880C0000 | op,                  # 4  lbz r0, FR_OPEN(r12)
+             0x2C000000,                       # 5  cmpwi r0, 0
+             0x4D820020,                       # 6  beqlr
+             0x801E01BC,                       # 7  lwz r0, 0x1BC(r30)  (z, float bits)
+             0x5400007E,                       # 8  clrlwi r0, r0, 1     (|z|)
+             0x3D6041F0,                       # 9  lis r11, 0x41F0      (30.0)
+             0x7C005840,                       # 10 cmplw r0, r11
+             0x4C800020,                       # 11 bgelr                (inside spot)
+             0x38000001,                       # 12 li r0, 1
+             0x980C0000 | f,                   # 13 stb r0, FR_FLAG(r12)
+             0x38800000 | WORKSHOP_SCRIPT,     # 14 li r4, 10804
+             0x4E800020]                       # 15 blr
+    sel = [0x3D808000, 0x39600000, 0x996C0000 | sh, _b(FR_SEL_AT + 12, FR_SEL_ORIG)]
+    a = [0x2C000000, 0x4C820020,                         # 0-1 not view-only -> original (craft)
+         0x819F0044, 0x2C0C0004, 0x40820014,             # 2-4 Development view only, else -> 9
+         0x3D808000, 0x898C0000 | op, 0x2C0C0000,        # 5-7 Franky's Supplies unlocked?
+         0x4082000C,                                     # 8 bne -> 11
+         0x2C000000, 0x4E800020,                         # 9-10 the original "do nothing"
+         0x9421FFF0, 0x7C0802A6, 0x90010014,             # 11-13 frame
+         0x3D808000, 0x38000001, 0x980C0000 | pd,        # 14-16 PEND = 1
+         0x806DA6F4, _b(FR_A_AT + 72, MENU_POP, 1),      # 17-18 close this view (like B)
+         0x80010014, 0x7C0803A6, 0x38210010,             # 19-21
+         0x38000000, 0x2C000000, 0x4E800020]             # 22-24
+    upd = [0x9421FFF0, 0x7C0802A6, 0x90010014, 0x93E1000C, 0x7C7F1B78,
+           0x3D808000, 0x880C0000 | pd, 0x2C000000, 0x41820038,
+           0x38000000, 0x980C0000 | pd,
+           0x801F0044, 0x2C000002, 0x40820024,
+           0x896C0000 | sh, 0x696B0001, 0x996C0000 | sh, 0x996C0000 | f,
+           0x809F0040, 0x7FE3FB78, _b(FR_UPD_AT + 80, FR_SEL_ORIG, 1), 0x4800000C,
+           0x7FE3FB78, _b(FR_UPD_AT + 92, FR_UPD_ORIG, 1),
+           0x80010014, 0x83E1000C, 0x7C0803A6, 0x38210010, 0x4E800020]
+    bguard = [0x3D808000, 0x898C0000 | pd, 0x2C0C0000, 0x4C820020, _b(FR_B_AT + 16, MENU_POP)]
+    return [(FR_SET_AT, setsel), (FR_CHR_AT, chara), (FR_NAME_AT, name), (FR_DONE_AT, done), (FR_REFRESH_AT, refresh),
+            (FR_TOUCH_AT, touch), (FR_SEL_AT, sel), (FR_A_AT, a), (FR_UPD_AT, upd), (FR_B_AT, bguard)]
+
+
+# ---- Old Gold Coins (0.30.0, franky_supplies; tested with tools/opuc_coins_fishing.py): barrels' Flour / Hardtack
+# pieces become a coin by chance (two drop routines), the Golden Hercules drops 1-5 coins instead of Sticky Sap.
+RAND, IDX_TO_ID = 0x803B4A70, 0x80102794
+COIN_BARREL_SITES = [(0x800DB000, 0x80B90000, 0), (0x800DD97C, 0x80BB0000, 8)]   # site, original, entry offset
+COIN_HERC_SITE, COIN_COUNT_SITE, COIN_COUNT_ORIG = 0x8011F440, 0x8011F490, 0x38A00001
+COIN_BARREL_AT, COIN_HERC_AT, COIN_COUNT_AT = 0x80002200, 0x80002520, 0x800025B0
+COIN_CHANCE, COIN_HERC_ON, COIN_COUNT = 0x800022F0, 0x800022F1, 0x800022F2
+BARREL_COIN_PERCENT = 50          # 30 in 0.30.x (user, 0.31.0)
+# Easier Fish (0.30.0): every fish's pull (item/fish_prm.bin, 5 phases at record +0x1A + 8k) halved once per table;
+# FISH_MARK holds the table address and a checksum of the halved pulls, so it's not halved twice.
+FISH_MARK = 0x800022F4
+
+
+def coin_code() -> List[Tuple[int, List[int]]]:
+    at = COIN_BARREL_AT
+    def bc(frm, to, op): return op | ((to - frm) & 0xFFFC)
+    c = [0x80B90000, 0, 0x80BB0000,
+         0x9421FFE0, 0x90010010, 0x7C0802A6, 0x90010024, 0x90610008, 0x90A1000C,
+         0x2C05003B, 0, 0x2C0500A1, 0,
+         0x806DB408, 0x80630000, 0,
+         0x38800064, 0x7C032396, 0x7C0021D6, 0x7C601850,
+         0x3C808000, 0x88840000 | (COIN_CHANCE & 0xFFFF), 0x7C032040, 0,
+         0x3800004F, 0x9001000C,
+         0x80A1000C, 0x80610008, 0x80010024, 0x7C0803A6, 0x80010010, 0x38210020, 0x4E800020]
+    c[1] = _b(at + 4, at + 12)
+    c[10] = bc(at + 40, at + 52, 0x41820000)
+    c[12] = bc(at + 48, at + 104, 0x40820000)
+    c[15] = _b(at + 60, RAND, 1)
+    c[23] = bc(at + 92, at + 104, 0x40800000)
+    h = COIN_HERC_AT
+    k = [0x9421FFE0, 0x7C0802A6, 0x90010024, 0x90810008, 0,
+         0x2C03004C, 0, 0x9061000C, 0x80810008, 0x80640000, 0,
+         0x2C03006B, 0x8061000C, 0,
+         0x3C808000, 0x88040000 | (COIN_HERC_ON & 0xFFFF), 0x2C000000, 0,
+         0x806DB408, 0x80630000, 0,
+         0x38800005, 0x7C032396, 0x7C0021D6, 0x7C601850, 0x38630001,
+         0x3C808000, 0x98640000 | (COIN_COUNT & 0xFFFF), 0x3860004F,
+         0x80010024, 0x7C0803A6, 0x38210020, 0x4E800020]
+    k[4] = _b(h + 16, IDX_TO_ID, 1)
+    k[6] = bc(h + 24, h + 116, 0x40820000)
+    k[10] = _b(h + 40, IDX_TO_ID, 1)
+    k[13] = bc(h + 52, h + 116, 0x40820000)
+    k[17] = bc(h + 68, h + 116, 0x41820000)
+    k[20] = _b(h + 80, RAND, 1)
+    n = [0x3D808000, 0x88AC0000 | (COIN_COUNT & 0xFFFF), 0x38000001, 0x980C0000 | (COIN_COUNT & 0xFFFF),
+         0x2C050000, 0x4C820020, 0x38A00001, 0x4E800020]
+    return [(COIN_BARREL_AT, c), (COIN_HERC_AT, k), (COIN_COUNT_AT, n)]
+
+
+# "Art of Supplying" (0.30.0): chara_adv/str_fra.en.bin (STRT: offsets from the file start at +0x0C) string 33 is
+# "Supply". Its offset is pointed at a copy of the new name in low memory (base + offset wraps around 32 bits).
+STR_FRA_HEAD = bytes.fromhex("5354525405c00000656e0000000000a0000000b0000000ca000000e4")
+SUPPLY_INDEX, SUPPLY_TEXT_AT, SUPPLY_NAME = 33, 0x800025D0, "Art of Supplying"
+
+
+# Shrine / Build Site touch spots (0.31.0, user): a locked shrine (no Access item yet) can't be touched at all. Both the
+# proximity check 0x80042FCC (prompt) and the touch 0x80043160 (menu; also marks the shrine seen, 0x8002356C) find
+# the shrine object (id at +0x130) and then test it: 0x8004305C `cmpwi r30, 0` / 0x800431EC `cmpwi r31, 0` call
+# stubs that clear the object when its id's bit is set in SHRINE_LOCK_BITS (bit id & 7 of byte id >> 3; ids < 1024).
+# The cost lock stays as a fallback. Code at 0x80001E00 (free low memory, below 0x80002000).
+SHRINE_TOUCH_SITES = [(0x8004305C, 0x2C1E0000, 30, 0x80001E00), (0x800431EC, 0x2C1F0000, 31, 0x80001E40)]
+SHRINE_LOCK_BITS = 0x80001F80
+
+
+def shrine_gate_code(reg: int) -> List[int]:
+    return [cmpwi(reg, 0), 0x4D820020,                                   # 0-1 no object: as before
+            (32 << 26) | (0 << 21) | (reg << 16) | 0x130,                # 2 lwz r0, 0x130(rX) (shrine id)
+            0x280003FF, 0x41810028,                                      # 3-4 id > 1023 -> 14
+            0x540CE8FE,                                                  # 5 srwi r12, r0, 3
+            0x3D608000, 0x616B0000 | (SHRINE_LOCK_BITS & 0xFFFF),        # 6-7 r11 = SHRINE_LOCK_BITS
+            0x7D8B60AE,                                                  # 8 lbzx r12, r11, r12
+            0x5400077E,                                                  # 9 clrlwi r0, r0, 29
+            0x7D8C0430,                                                  # 10 srw r12, r12, r0
+            0x718C0001, 0x41820008,                                      # 11-12 bit clear -> 14
+            li(reg, 0),                                                  # 13 locked: no shrine here
+            cmpwi(reg, 0), 0x4E800020]                                   # 14-15
+
+
+# Expanded Storage (0.32.3; the menu shows up to 45 slots, 9 per row - user test with tools/opuc_storage.py). Storage
+# is item list 1 (player items +0x150: u32 in use, u32 allocated, slot array, 16 bytes per slot). Every game session
+# builds the lists (0x800F6704 -> 0x800F4FAC) with the slot counts of the table at 0x8050C338 (12 bytes per list:
+# name, count, flag; Storage = 35 at 0x8050C348), and frees them on the way back to the title. The same table gave
+# the save section sizes, but those are registered once at boot (0x800F7AD8, ItemBag1 = 12 + 35 x 16): so the client
+# sets Storage's count to 45 once the section exists, and the next session's Storage is a real 45-slot heap array.
+# (0.32.0 - 0.32.2 moved Storage to low memory instead: freeing it crashed on the way to the title, and loading after
+# that held on a black screen.) The list save routine 0x800F4CA4 (a leaf) writes {12, in use, allocated} and
+# "allocated" slots: both counts are capped at 35 (branches out to STORAGE_SAVE_AT and back), so the section never
+# overflows. Slots 36-45 (item u16, count u8) are kept in unused EventFuncEndFlag bytes (+0xD38, flags 27072+), saved
+# with the game. Loading (0x800F4C18) copies the 35 saved slots, clears the rest and sets "in use" to 35: the client
+# then puts the 10 kept slots back and "in use" to 45.
+STORAGE_SAVE_SITES = [(0x800F4CA4, 0x80C30004, 6), (0x800F4CBC, 0x80A30000, 5)]   # lwz r6,4(r3) / lwz r5,0(r3)
+STORAGE_SAVE_AT, STORAGE_SLOTS, STORAGE_VANILLA = 0x80001B00, 45, 35
+STORAGE_COUNT_AT, STORAGE_NAME_AT, STORAGE_NAME = 0x8050C348, 0x8050C344, 0x8050C314   # table entry 1 (ItemBag1)
+STORAGE_KEEP_OFF = 0xD38          # EventFuncEndFlag: 10 x {u16 item, u8 count, u8 0}
+
+
+def storage_save_code() -> List[int]:
+    out = []
+    for k, (site, orig, reg) in enumerate(STORAGE_SAVE_SITES):
+        at = STORAGE_SAVE_AT + 0x20 * k
+        out += [orig, cmpwi(reg, STORAGE_VANILLA), 0x40810008, li(reg, STORAGE_VANILLA),
+                0x48000000 | ((site + 4 - (at + 16)) & 0x3FFFFFC), 0, 0, 0]
+    return out
 
 
 def stele_code():
@@ -197,6 +392,92 @@ def wardrobe_args() -> bytes:
     return b"".join(struct.pack(">IIIIII", sid, 2, 1, 2, 0, 0) for sid in WARDROBE_SPOTS)
 
 
+# ---- on-screen Archipelago messages (0.26.0, docs/changes_0_18.md "caption system") --------------------------------
+# The game's movie-subtitle line: 0x8017931C(text, frames, delay, 1, &colour, &colour2) on the subtitle manager
+# [0x8068A584] (made at boot, used only by movie captions). Lines queue in the game (each waits for the one before),
+# draw over everything, take "\n", no wrapping, 127 UTF-16 characters, printf-style text ("%" -> "%%"). The hook
+# stub calls CAPTION_AT every frame; it shows the text at CAPTION_TEXT when CAPTION_FLAG is set. Subtitle text
+# object = [[[[0x8068A584]]] + 0x78]: +0x174 FontScale (user: 0.8), +0x164 letter spacing.
+CAPTION_AT, CAPTION_FLAG, CAPTION_FRAMES = 0x80002300, 0x800023F4, 0x800023F8
+CAPTION_COLOUR, CAPTION_TEXT, CAPTION_LIMIT = 0x80002400, 0x80002420, 127
+SUBTITLE_MGR_PTR, SUBTITLE_SHOW, CAPTION_SCALE = 0x8068A584, 0x8017931C, 0.8
+CAPTION_BORDER = 1.5        # TextBorderOffset (outline width; user: 1.5 looks much cleaner than the default)
+# Position: the subtitle code (0x801797DC) centres the block near the bottom of the screen and stores its top-left at
+# 0x80179AAC stfs f0,16(r21) (x) / 0x80179AB0 stfs f1,20(r21) (y). Code patch (title screen): 0x80179AAC -> bl to a
+# stub adding our offsets (CAPTION_DX / CAPTION_DY, screen units ~640 x 480, + = right / down). Default "top" (user).
+POS_SITE, POS_ORIG, POS_AT, CAPTION_DX, CAPTION_DY = 0x80179AAC, 0xD0150010, 0x80002680, 0x800023E0, 0x800023E4
+CAPTION_POSITIONS = {"top": (0, -330), "topleft": (-180, -330), "topright": (180, -330), "middle": (0, -150),
+                     "bottom": (0, 0), "lower": (0, 40), "left": (-180, 0), "right": (180, 0)}
+POS_CODE = [0x3D808000,                             # lis r12, 0x8000
+            0xC04C0000 | (CAPTION_DX & 0xFFFF),     # lfs f2, DX(r12)
+            0xEC00102A,                             # fadds f0, f0, f2
+            0xC04C0000 | (CAPTION_DY & 0xFFFF),     # lfs f2, DY(r12)
+            0xEC21102A,                             # fadds f1, f1, f2
+            POS_ORIG,                               # stfs f0, 16(r21)
+            0x4E800020]                             # blr (the next original instruction stores f1)
+# Character advances of the subtitle font at scale 1 (measured in game, tools/opuc_caption.py measure, 2026-11-06)
+_CAPTION_CHARS = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
+_CAPTION_W = [8.0, 5.0, 5.0, 9.0, 9.0, 5.5, 11.0, 5.0, 6.0, 5.0, 7.0, 9.0, 5.0, 6.0, 5.0, 6.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 5.0, 5.0, 8.0, 9.0, 8.0, 8.0, 12.0, 10.0, 10.0, 10.0, 10.0, 10.0, 9.0, 10.0, 10.0, 4.0, 6.0, 10.0, 8.0, 13.0, 10.0, 11.0, 9.0, 11.0, 10.0, 9.0, 9.0, 10.0, 10.0, 14.0, 10.0, 9.0, 9.0, 6.0, 6.0, 5.0, 9.0, 8.0, 5.0, 8.0, 8.0, 8.0, 8.0, 8.0, 6.0, 8.0, 8.0, 3.0, 4.0, 8.0, 3.0, 11.0, 8.0, 8.0, 8.0, 8.0, 7.0, 7.0, 6.0, 8.0, 7.0, 11.0, 7.0, 8.0, 7.0, 6.0, 5.0, 5.0, 7.0]
+CAPTION_WIDTHS = dict(zip(_CAPTION_CHARS, _CAPTION_W))
+CAPTION_WIDTHS.update({'à': 8.0, 'ä': 8.0, 'ç': 8.0, 'è': 8.0, 'é': 8.0, 'ñ': 8.0, 'ö': 8.0, 'ü': 8.0})
+CAPTION_WRAP = 300.0        # line width (scale-1 units), about 38 average characters (user test)
+CAPTION_MAX_LINES = 3
+
+
+def caption_code() -> List[int]:
+    at = CAPTION_AT
+    c = [0x9421FFF0, 0x7C0802A6, 0x90010014,                        # 0-2 frame
+         lis(4, 0x8000), lbz(0, CAPTION_FLAG & 0xFFFF, 4), cmpwi(0, 0),
+         0x41820000,                                                # 6 beq out
+         li(0, 0), stb(0, CAPTION_FLAG & 0xFFFF, 4),
+         lwz(5, CAPTION_FRAMES & 0xFFFF, 4),
+         lis(3, 0x8000), addi(3, 3, CAPTION_TEXT & 0xFFFF),
+         0x7CA42B78,                                                # mr r4, r5 (frames)
+         li(5, 0), li(6, 1),
+         lis(7, 0x8000), addi(7, 7, CAPTION_COLOUR & 0xFFFF),
+         0x7CE83B78,                                                # mr r8, r7
+         0]
+    c[-1] = bl(at + 4 * (len(c) - 1), SUBTITLE_SHOW)
+    c[6] = 0x41820000 | ((len(c) - 6) * 4)
+    c += [0x80010014, 0x7C0803A6, 0x38210010, 0x4E800020]
+    return c
+
+
+def caption_width(text: str) -> float:
+    return sum(CAPTION_WIDTHS.get(ch, 8.0) for ch in text)
+
+
+def caption_pages(text: str) -> List[str]:
+    """Word-wrap to CAPTION_WRAP, centre each line under the widest with leading spaces (the box only left-aligns),
+    and split into messages of at most CAPTION_MAX_LINES lines / 127 characters (the game queues them)."""
+    text = text.replace("%", "%%")
+    lines: List[str] = []
+    for para in text.split("\n"):
+        cur = ""
+        for word in para.split(" "):
+            if cur and caption_width(cur + " " + word) > CAPTION_WRAP:
+                lines.append(cur)
+                cur = word
+            else:
+                cur = f"{cur} {word}" if cur else word
+        lines.append(cur)
+
+    def centre(group: List[str]) -> str:
+        widest = max(caption_width(x) for x in group)
+        sp = CAPTION_WIDTHS[" "]
+        return "\n".join(" " * max(0, round((widest - caption_width(x)) / 2 / sp)) + x for x in group)
+
+    pages, cur = [], []
+    for line in lines:
+        if cur and (len(cur) >= CAPTION_MAX_LINES or len(centre(cur + [line])) > CAPTION_LIMIT):
+            pages.append(centre(cur))
+            cur = []
+        cur.append(line)
+    if cur:
+        pages.append(centre(cur))
+    return [p[:CAPTION_LIMIT] for p in pages]
+
+
 def status_code() -> List[int]:
     at = STATUS_AT
     def call(i, t): return 0x48000001 | ((t - (at + 4 * i)) & 0x3FFFFFC)
@@ -291,7 +572,7 @@ STORE_ITEMS = {1, 3, 6, 8, 62, 87, 89, 90, 91, 92, 93, 94, 95, 96} | set(range(1
 BAG_CAPACITY = {162: ("bag", 28), 163: ("bag", 35), 164: ("palette", 6), 165: ("palette", 9)}
 LIST_OFFSET = {"bag": 0x120, "storage": 0x150, "palette": 0x180}
 GOLD_ORB = 85
-GUNPOWDER = 15
+GUNPOWDER, BOMBS = 15, 14         # item ids (Bombs: Cave Isle Knuckle Soldier drop, 0.27.0)
 ORB_ITEMS = [80, 81, 82, 83, 84, 85]     # Red, Blue, White, Green, Black, Gold
 # field/fobj_gen_item_table.atb (items from breaking / burning / vacuuming field objects): ALTB, 103 rows of
 # 300 bytes at +0x10, 25 x {u32 item, u32 count, f32 chance} per row. Rows 96-100 column 22 = the Sunny's
@@ -394,6 +675,9 @@ HIDDEN_AP_COMMENT = wrap_comment(["It's an Archipelago Item!", "This Location ha
 HIDDEN_ALSO_COMMENT = wrap_comment(["This Recipe also holds an Archipelago Item!",
                                     "This Location has not been claimed!"]) or "An Archipelago Item!"
 
+
+# Franky's fixed trades once made (0.30.0)
+FRANKY_DONE_COMMENT = "SUUUPER! Bring me more Old Gold\nCoins and I'll trade you again,\nbro! It's a deal!"
 
 # Recipes that aren't locations in this world (materials out of scope, or room after the goal)
 NO_LOCATION_COMMENT = wrap_comment(["This recipe is not a Location in this World yet!"]) or "Not a Location yet!"
@@ -636,6 +920,7 @@ class GameState:
             return                                    # game code not loaded yet (Dolphin still booting)
         self.patch_costume_creation()                  # Starting Costumes at character creation (title screen)
         self.patch_craft_copies()                      # stack craftables come in their vanilla amount (0.25.17)
+        self.patch_caption_position()                  # on-screen messages can be moved (0.26.0, default top)
         # scripts can no longer add Straw Hats
         if cur == ADD_USE_ORIG:
             self.w32(ADD_USE_CALL, NOP)
@@ -708,7 +993,86 @@ class GameState:
             self.patch_cold_resistance()
         if int(sd.get("aquarium_open", 1)):
             self.patch_aquarium()
+        if int(sd.get("franky_supplies", 0)):
+            self.patch_franky()
+            self.patch_coins()
+        self.patch_shrine_touch()
+        if int(sd.get("expanded_storage", 0)):
+            self.patch_storage_save()
         self.patched = True
+
+    def patch_franky(self) -> None:
+        """Franky's Supplies menu (0.30.0): crafting-menu stubs, the outside Storage touch redirect and the
+        Instructions A toggle. Code patch (title screen)."""
+        sites = [(s_, o_, bl(s_, at)) for s_, o_, at in FR_SITES] + [(FR_TOUCH_SITE, FR_TOUCH_ORIG,
+                                                                         bl(FR_TOUCH_SITE, FR_TOUCH_AT))]
+        if any(self.u32(s_) not in (o_, new) for s_, o_, new in sites):
+            self.say_once("franky", "Franky's Supplies: the game's code isn't as expected - not patched.")
+            return
+        for at, code in franky_code():
+            self.w(at, b"".join(struct.pack(">I", x) for x in code))
+        self.w(FR_FLAG, b"\0\0\0\0\0")
+        for s_, _o, new in sites:
+            self.w32(s_, new)
+        if (self.u32(FR_VT_UPD) in (FR_UPD_ORIG, FR_UPD_AT) and self.u32(FR_VT_SEL) in (FR_SEL_ORIG, FR_SEL_AT)
+                and self.u32(FR_A_SITE) in (FR_A_ORIG, bl(FR_A_SITE, FR_A_AT))
+                and self.u32(FR_B_SITE) in (FR_B_ORIG, bl(FR_B_SITE, FR_B_AT))):
+            self.w32(FR_A_SITE, bl(FR_A_SITE, FR_A_AT))
+            self.w32(FR_B_SITE, bl(FR_B_SITE, FR_B_AT))
+            self.w32(FR_VT_UPD, FR_UPD_AT)
+            self.w32(FR_VT_SEL, FR_SEL_AT)
+
+    def set_franky_open(self, open_: bool) -> None:
+        if self.u32(FR_TOUCH_SITE) != bl(FR_TOUCH_SITE, FR_TOUCH_AT):
+            return
+        v = b"\x01" if open_ else b"\0"
+        if self.rd(FR_OPEN, 1) != v:
+            self.w(FR_OPEN, v)
+            if not open_:
+                self.w(FR_SHOW, b"\0")
+
+    def patch_coins(self) -> None:
+        """Old Gold Coins from barrels and the Golden Hercules (0.30.0). Code patch (title screen)."""
+        sites = [(s_, o_, bl(s_, COIN_BARREL_AT + e)) for s_, o_, e in COIN_BARREL_SITES]
+        sites += [(COIN_HERC_SITE, bl(COIN_HERC_SITE, IDX_TO_ID), bl(COIN_HERC_SITE, COIN_HERC_AT)),
+                  (COIN_COUNT_SITE, COIN_COUNT_ORIG, bl(COIN_COUNT_SITE, COIN_COUNT_AT))]
+        if any(self.u32(s_) not in (o_, new) for s_, o_, new in sites):
+            self.say_once("coins", "Old Gold Coin drops: the game's code isn't as expected - not patched.")
+            return
+        for at, code in coin_code():
+            self.w(at, b"".join(struct.pack(">I", x) for x in code))
+        self.w(COIN_CHANCE, bytes([BARREL_COIN_PERCENT, 1, 0]))
+        for s_, _o, new in sites:
+            self.w32(s_, new)
+
+    def easier_fish(self) -> None:
+        """Halve every fish's pull once per loaded fish table (0.30.0, Easier Fish)."""
+        n, recs = self.u32(0x805E91E0 + 0x18), self.u32(0x805E91E0 + 0x1C)
+        if not valid(recs) or not 0 < n <= 64:
+            return
+        data = bytearray(self.rd(recs, 64 * n))
+        pulls = b"".join(bytes(data[64 * i + 0x1A + 8 * k:64 * i + 0x1C + 8 * k]) for i in range(n) for k in range(5))
+        if self.rd(FISH_MARK, 8) == struct.pack(">II", recs, zlib.crc32(pulls)):
+            return
+        for i in range(n):
+            for k in range(5):
+                o = 64 * i + 0x1A + 8 * k
+                struct.pack_into(">H", data, o, struct.unpack_from(">H", data, o)[0] // 2)
+        self.w(recs, bytes(data))
+        pulls = b"".join(bytes(data[64 * i + 0x1A + 8 * k:64 * i + 0x1C + 8 * k]) for i in range(n) for k in range(5))
+        self.w(FISH_MARK, struct.pack(">II", recs, zlib.crc32(pulls)))
+
+    def rename_supply(self) -> None:
+        """Franky's Supply is shown as "Art of Supplying" (0.30.0): the str_fra table found by the RAM scan."""
+        text = SUPPLY_NAME.encode("utf-16-be") + b"\0\0"
+        for base in self.scan_cache.get("str_fra", []):
+            if self.rd(base, len(STR_FRA_HEAD)) != STR_FRA_HEAD:
+                continue
+            if self.rd(SUPPLY_TEXT_AT, len(text)) != text:
+                self.w(SUPPLY_TEXT_AT, text)
+            want = (SUPPLY_TEXT_AT - base) & 0xFFFFFFFF
+            if self.u32(base + 0x0C + 4 * SUPPLY_INDEX) != want:
+                self.w32(base + 0x0C + 4 * SUPPLY_INDEX, want)
 
     def patched_before(self, a: int) -> bool:
         """True if the word at a is one of our own patches (client restarted without resetting the game)."""
@@ -729,6 +1093,7 @@ class GameState:
             self.w(STELE_BYTE, v)
 
     def set_rooms(self, owned: Set[str]) -> None:
+        self.set_franky_open("franky" in owned)
         for room in ("workshop", "kitchen", "pharmacy"):
             v = b"\x01" if room in owned else b"\0"
             menu = WS_BYTE if room == "workshop" else ROOM_SITES[room][1]
@@ -933,7 +1298,7 @@ class GameState:
 
     # ------------------------------------------------------------------ RAM scans (tables loaded per stage)
     def _scan(self) -> Dict[str, List[int]]:
-        found: Dict[str, List[int]] = {"enemy": [], "gen_item": []}
+        found: Dict[str, List[int]] = {"enemy": [], "gen_item": [], "str_fra": []}
         lvl = {c: bytes.fromhex(h) for c, h in LVL_TABLES.items()}
         abil = {c: bytes.fromhex(h) for c, h in ABILITY_EXP.items()}
         for c in CHAR_NAMES:
@@ -968,12 +1333,16 @@ class GameState:
                     if rs == 40:
                         found["enemy"].append((start + i + doff, nrows, start + i))
                 i = data.find(b"ALTB", i + 4)
+            i = data.find(STR_FRA_HEAD)
+            while i != -1:      # Franky's ability names (Supply -> Art of Supplying, 0.30.0)
+                found["str_fra"].append(start + i)
+                i = data.find(STR_FRA_HEAD, i + 4)
             i = data.find(b"ALTB")
             while i != -1:      # the generated-items table: 103 rows of 300 bytes at +0x10, Map 10 in row 96
                 if i + 16 <= len(data) and struct.unpack_from(">HHHH", data, i + 6) == (GEN_ITEM_ROWS, 0, GEN_ITEM_OFF,
                                                                                           GEN_ITEM_ROW):
                     row = i + GEN_ITEM_OFF + GEN_ITEM_MAP_ROWS[0] * GEN_ITEM_ROW + GEN_ITEM_VACUUM * 12
-                    if row + 4 <= len(data) and struct.unpack_from(">I", data, row)[0] in FRAGMENT_ITEMS | set(ORB_ITEMS):
+                    if row + 4 <= len(data) and struct.unpack_from(">I", data, row)[0] in FRAGMENT_ITEMS | set(ORB_ITEMS) | {79}:
                         found["gen_item"].append(start + i + GEN_ITEM_OFF)
                 i = data.find(b"ALTB", i + 4)
         return found
@@ -1215,6 +1584,10 @@ class GameState:
         sc = b"".join(struct.pack(">I", x) for x in status_code())
         if self.rd(STATUS_AT, len(sc)) != sc:
             self.w(STATUS_AT, sc)
+        cc = b"".join(struct.pack(">I", x) for x in caption_code())
+        if self.rd(CAPTION_AT, len(cc)) != cc:
+            self.w(CAPTION_FLAG, b"\0")
+            self.w(CAPTION_AT, cc)
         wc = b"".join(struct.pack(">I", x) for x in wardrobe_code())
         if self.rd(WARDROBE_AT, len(wc)) != wc:
             self.w(WARDROBE_AT, wc)
@@ -1230,6 +1603,46 @@ class GameState:
             self.w(HOOK_FLAG, b"\0\0\0")
             self.w(STUB, packed)
         self.w32(entry, STUB)
+
+    # ---- on-screen messages (caption system) ----
+    def caption_text_obj(self) -> Optional[int]:
+        m = self.u32(SUBTITLE_MGR_PTR)
+        a = self.u32(m) if valid(m) else 0
+        w = self.u32(a) if valid(a) else 0
+        t = self.u32(w + 0x78) if valid(w) else 0
+        return t if valid(t) else None
+
+    def caption_ready(self) -> bool:
+        """The hook is in and has taken the previous message (the game queues the ones it has)."""
+        return self.hook_active() and self.rd(CAPTION_FLAG, 1)[0] == 0 and self.caption_text_obj() is not None
+
+    def patch_caption_position(self) -> None:
+        """Title screen (code the game may not have run yet): messages can be moved (CAPTION_DX / DY)."""
+        if self.u32(POS_SITE) == POS_ORIG:
+            self.w(CAPTION_DX, struct.pack(">ff", *CAPTION_POSITIONS["top"]))
+            for i, x in enumerate(POS_CODE):
+                self.w32(POS_AT + 4 * i, x)
+            self.w32(POS_SITE, bl(POS_SITE, POS_AT))
+
+    def show_caption(self, text: str, rgb: Tuple[float, float, float], frames: int = 240, scale: float = CAPTION_SCALE,
+                     border: float = CAPTION_BORDER, offset: Tuple[float, float] = (0, -330)) -> None:
+        t = self.caption_text_obj()
+        if t:
+            style = struct.pack(">f", scale)
+            if self.rd(t + 0x174, 4) != style:
+                self.w(t + 0x174, style)
+            want = (struct.pack(">f", border), b"\1" if border > 0 else b"\0")
+            if (self.rd(t + 0x160, 4), self.rd(t + 0x103, 1)) != want:
+                self.w(t + 0x160, want[0])
+                self.w(t + 0x103, want[1])
+                self.w(t + 0x101, b"\1")
+        if self.u32(POS_SITE) == bl(POS_SITE, POS_AT):
+            self.w(CAPTION_DX, struct.pack(">ff", *offset))
+        data = text[:CAPTION_LIMIT].encode("utf-16-be", "replace") + b"\0\0"
+        self.w(CAPTION_TEXT, data)
+        self.w(CAPTION_COLOUR, struct.pack(">4f", *rgb, 1.0))
+        self.w(CAPTION_FRAMES, struct.pack(">I", frames))
+        self.w(CAPTION_FLAG, b"\1")
 
     def hook_active(self) -> bool:
         m = self.chara_mgr()
@@ -1307,6 +1720,8 @@ class GameState:
         emit(0x7C7D1B78)
         for x in (0x3C808000, 0x88A42F21, 0x38A50001, 0x98A42F21):   # call counter
             emit(x)
+        blto(CAPTION_AT)                                   # on-screen AP message, if one is waiting (any time)
+        emit(0x3C808000)                                   # lis r4, 0x8000 again (the routine uses r4)
         # Give an item the way chests do, when the client asks (flag 0x80002F22, item 0x80002F24,
         # count 0x80002F28, item handle buffer 0x80002F30): ctor 0x800F8934, give 0x80040B4C(mgr, &h, n, 1, 1)
         emit(0x88042F22); emit(0x2C000000)
@@ -1586,6 +2001,26 @@ class GameState:
         self.w(CAMP_CMD, b"\x05" if add else b"\x06")
         return True
 
+    def request_script(self, script: int) -> bool:
+        """Ask the hook to run an event script (hook command 3, like a fight restart; the hook waits until no event
+        or menu is up). 0.34.0: the Wherever Cannon's build-finished event 10010."""
+        if self.rd(CAMP_CMD, 1)[0] or self.retry_pending or not self.hook_active():
+            return False
+        self.w(RETRY_SCRIPT, struct.pack(">I", script) + bytes(12))
+        self.w(CAMP_CMD, b"\x03")
+        return True
+
+    def set_script_flag(self, n: int, section: str = "EventScriptEndFlag") -> bool:
+        """Turn a script's end flag on (as if it had run). False if the save isn't loaded."""
+        d = self._section(section)
+        if not d:
+            return False
+        a, bit = d + (n >> 5) * 4, 1 << (n & 31)
+        v = self.u32(a)
+        if not v & bit:
+            self.w32(a, v | bit)
+        return True
+
     def request_wardrobe(self) -> bool:
         """Ask the hook to switch the wardrobe touch spots on (hook command 8; only call on the Sunny)."""
         if self.rd(CAMP_CMD, 1)[0] or not self.hook_active():
@@ -1621,6 +2056,7 @@ class GameState:
     # column is the hit's attack type (attribute -> column table 0x80506B10): 11 = slash (bamboo only drops in 11 /
     # 17), 17 = Pickaxe, 22 = Vacuum Cleaner; 10 / 12 / 16 / 18 / 19 = the other hits; 14 / 20 / 23 = Ashes (fire).
     PLANT_ITEMS = {34: "Bitter Grass", 31: "Medicinal Herbs", 37: "Nectar"}
+    ASHES, ASHES_RATE = 78, 80.0
     PLANT_ROWS = list(range(0, 15)) + list(range(39, 47))
     PLANT_NORMAL_COLS, PLANT_SLASH_COL, PLANT_VACUUM_COL = (10, 12, 16, 17, 18, 19), 11, 22
     # (normal, slash, vacuum) chance %: Better Plant Drop Rates (user, 0.23.3)
@@ -1640,6 +2076,34 @@ class GameState:
                         want = self.PLANT_RATES.get(item, (None,) * 3)[k]
                         if want is not None and chance != want:
                             self.w(row + c * 12 + 8, struct.pack(">f", want))
+                # Ashes from fire hits (columns 14 / 20 / 23, vanilla 8-10%): 80% (user, 0.33.0)
+                for c in range(GEN_ITEM_ROW // 12):
+                    item, _n, chance = struct.unpack_from(">IIf", data, c * 12)
+                    if item == self.ASHES and chance != self.ASHES_RATE:
+                        self.w(row + c * 12 + 8, struct.pack(">f", self.ASHES_RATE))
+        self.set_gen_cells(self.SEA_LILY_ROW, self.SEAWEED, chance=self.SEAWEED_RATE)
+
+    # Cave Isle (0.33.4, user): Sea Lily (grass_cnoidA -> row 57) Mysterious Seaweed 20% -> 80% (Better Plant Drop
+    # Rates); Sea Anemone (grass_sanmnA -> row 102) Black Orb 50% -> Old Gold Coin (Franky's Supplies).
+    SEA_LILY_ROW, SEAWEED, SEAWEED_RATE = 57, 52, 80.0
+    ANEMONE_ROW, BLACK_ORB, OLD_GOLD_COIN_ITEM = 102, 84, 79
+
+    def set_gen_cells(self, row_index: int, item: int, chance: Optional[float] = None,
+                      new_item: Optional[int] = None) -> None:
+        """Every cell of a fobj_gen_item_table row holding item: set its chance and / or item."""
+        for base in self.scan_cache.get("gen_item", []):
+            if self.rd(base - GEN_ITEM_OFF, 4) != b"ALTB":
+                continue
+            row = base + row_index * GEN_ITEM_ROW
+            data = self.rd(row, GEN_ITEM_ROW)
+            for c in range(GEN_ITEM_ROW // 12):
+                it, _n, ch = struct.unpack_from(">IIf", data, c * 12)
+                if it != item:
+                    continue
+                if chance is not None and ch != chance:
+                    self.w(row + c * 12 + 8, struct.pack(">f", chance))
+                if new_item is not None:
+                    self.w32(row + c * 12, new_item)
 
     def set_blue_orb_spot(self, item: int) -> None:
         """Every Blue Orb dig spot (fobj_param row 96 land_shineA_type2 -> item row 71, Pickaxe columns 14 / 17 =
@@ -1713,7 +2177,7 @@ class GameState:
 
     def set_gunpowder_drops(self, chance: int) -> None:
         """Easier Gunpowder Drops (0.24.0): the gunners' common drop chance (u16 item_dorp_ratio<0> at row + 0x24,
-        percent) where the common drop is Gunpowder. Kill drops and Nami's steals both roll it; Cat Burglar multiplies
+        percent) where the common drop is Gunpowder (or Bombs: Cave Isle Knuckle Soldiers, 0.27.0). Kill drops and Nami's steals both roll it; Cat Burglar multiplies
         the steal roll by steal_scale / 100 (300 / 400 / 500 / 550 / 600), user-tested 2026-11-02."""
         want = struct.pack(">H", max(0, min(100, chance)))
         for base, nrows, header in self.scan_cache.get("enemy", []):
@@ -1721,7 +2185,8 @@ class GameState:
                 continue
             data = self.rd(base, nrows * 40)
             for r in range(nrows):
-                if struct.unpack_from(">I", data, r * 40 + 0x18)[0] == GUNPOWDER and data[r * 40 + 0x24:r * 40 + 0x26] != want:
+                if struct.unpack_from(">I", data, r * 40 + 0x18)[0] in (GUNPOWDER, BOMBS) \
+                        and data[r * 40 + 0x24:r * 40 + 0x26] != want:
                     self.w(base + r * 40 + 0x24, want)
 
     # ------------------------------------------------------------------ items: bag / found bits
@@ -1885,6 +2350,38 @@ class GameState:
             cur = list(struct.unpack(">6h", self.rd(g + 0xC, 12)))
             self.w(g + 0xC, struct.pack(">6h", *(min(c, m) for c, m in zip(cur, want))))
 
+    def gabri_energy(self) -> Optional[Tuple[List[int], List[int]]]:
+        """(max, current) Energy per slot (Red, Green, Blue, White, Black, Gold; 100 = one bar), or None."""
+        g = self.u32(GABRI_PTR)
+        if not valid(g):
+            return None
+        return list(struct.unpack(">6h", self.rd(g, 12))), list(struct.unpack(">6h", self.rd(g + 0xC, 12)))
+
+    def add_gabri_energy(self, slot: int, delta: int) -> int:
+        """Add (or take) current Energy of one slot, kept within 0..max. Returns the change actually made."""
+        g = self.u32(GABRI_PTR)
+        if not valid(g) or not 0 <= slot < 6:
+            return 0
+        mx = struct.unpack(">h", self.rd(g + 2 * slot, 2))[0]
+        cur = struct.unpack(">h", self.rd(g + 0xC + 2 * slot, 2))[0]
+        new = max(0, min(mx, cur + delta))
+        if new != cur:
+            self.w(g + 0xC + 2 * slot, struct.pack(">h", new))
+        return new - cur
+
+    def set_gabri_bars(self, bars: List[int]) -> None:
+        """Gabri Energy Items: per_colour (0.28.0): max Energy per colour (Red, Green, Blue, White, Black, Gold) in
+        bars, 0-10 each."""
+        g = self.u32(GABRI_PTR)
+        if not valid(g):
+            return
+        want = [max(0, min(15, b)) * 100 for b in bars[:6]]          # 15 with gabri_level_items 15 (0.31.0)
+        mx = list(struct.unpack(">6h", self.rd(g, 12)))
+        if mx != want:
+            self.w(g, struct.pack(">6h", *want))
+            cur = list(struct.unpack(">6h", self.rd(g + 0xC, 12)))
+            self.w(g + 0xC, struct.pack(">6h", *(min(c, m) for c, m in zip(cur, want))))
+
     def _shrines(self) -> Iterable[Tuple[int, int, int]]:
         """(shrine id, row address, state byte address). Rows per zone from event/epoint/zone0-5.bin: Sunny 1,
         Wooded Isle 7, Gorge Isle 8, Island 3 6, Island 4 4, Central Isle 1. (0.17.x only read zones 0-1, so the
@@ -1901,13 +2398,140 @@ class GameState:
                 yield self.u32(a), a, m + 0x48 + z * 0x80 + r
 
     def set_shrine_locks(self, unlocked: Set[int]) -> None:
-        for sid, row, _ in self._shrines():
+        """Locked shrines: impossible cost, and (0.31.0) their touch spot is off. Unlocked ones are marked Discovered
+        in the Events menu (state |= 0x05, like 0x8002356C does on the first touch)."""
+        bits = bytearray(128)
+        for sid, row, st in self._shrines():
             if sid not in SHRINE_COSTS:
                 continue
             cost = SHRINE_COSTS[sid] if sid in unlocked else [SHRINE_LOCKED] * 7
             b = struct.pack(">7H", *cost)
             if self.rd(row + 0xC, 14) != b:
                 self.w(row + 0xC, b)
+            if sid not in unlocked and sid < 1024:
+                bits[sid >> 3] |= 1 << (sid & 7)
+            elif sid in unlocked:
+                v = self.rd(st, 1)[0]
+                if not v & 0x01:
+                    self.w(st, bytes([v | 0x05]))
+        if self.u32(SHRINE_TOUCH_SITES[0][0]) == bl(SHRINE_TOUCH_SITES[0][0], SHRINE_TOUCH_SITES[0][3]) \
+                and self.rd(SHRINE_LOCK_BITS, 128) != bytes(bits):
+            self.w(SHRINE_LOCK_BITS, bytes(bits))
+
+    def patch_shrine_touch(self) -> None:
+        """Locked shrines can't be touched (0.31.0). Code patch (title screen); nothing locked until the client
+        fills SHRINE_LOCK_BITS."""
+        if any(self.u32(s_) not in (o_, bl(s_, at)) for s_, o_, _r, at in SHRINE_TOUCH_SITES):
+            self.say_once("shrine_touch", "Shrine touch spots: the game's code isn't as expected - not patched.")
+            return
+        self.w(SHRINE_LOCK_BITS, bytes(128))
+        for s_, _o, reg, at in SHRINE_TOUCH_SITES:
+            self.w(at, b"".join(struct.pack(">I", x) for x in shrine_gate_code(reg)))
+            self.w32(s_, bl(s_, at))
+
+    def check_low_code(self) -> None:
+        """Diagnostics (0.32.5): the code the client put at 0x80001800-0x80001FFF (shrine touch gate, Storage save cap)
+        must still be there while its branches are in; if something overwrote it, it's put back and logged."""
+        blocks = []
+        if self.u32(SHRINE_TOUCH_SITES[0][0]) == bl(SHRINE_TOUCH_SITES[0][0], SHRINE_TOUCH_SITES[0][3]):
+            blocks += [(at, shrine_gate_code(reg)) for _s, _o, reg, at in SHRINE_TOUCH_SITES]
+        if self.u32(STORAGE_SAVE_SITES[0][0]) == _b(STORAGE_SAVE_SITES[0][0], STORAGE_SAVE_AT):
+            blocks.append((STORAGE_SAVE_AT, storage_save_code()))
+        for at, code in blocks:
+            b = b"".join(struct.pack(">I", x) for x in code)
+            if self.rd(at, len(b)) != b:
+                self.log(f"Low memory at {at:08X} was overwritten by the game - put back (please tell the dev).")
+                self.w(at, b)
+
+    def patch_storage_save(self) -> None:
+        """Expanded Storage: the list save routine writes at most 35 slots (code patch, title screen)."""
+        if any(self.u32(s_) not in (o_, _b(s_, STORAGE_SAVE_AT + 0x20 * k))
+               for k, (s_, o_, _r) in enumerate(STORAGE_SAVE_SITES)):
+            self.say_once("storage", "Expanded Storage: the game's code isn't as expected - not patched.")
+            return
+        self.w(STORAGE_SAVE_AT, b"".join(struct.pack(">I", x) for x in storage_save_code()))
+        for k, (s_, _o, _r) in enumerate(STORAGE_SAVE_SITES):
+            self.w32(s_, _b(s_, STORAGE_SAVE_AT + 0x20 * k))
+
+    def _section_size(self, name: str) -> Optional[int]:
+        lst = self.u32(FLAG_LIST)
+        node = self.u32(lst) if valid(lst) else 0
+        seen = set()
+        while valid(node) and node not in seen:
+            seen.add(node)
+            np = self.u32(node + 8)
+            if valid(np) and self.rd(np, len(name) + 1) == name.encode() + b"\0":
+                return self.u32(node + 0xC)
+            node = self.u32(node)
+        return None
+
+    def set_storage_count(self) -> None:
+        """Expanded Storage: Storage lists built from now on get 45 slots - only once the save routine is capped and
+        the ItemBag1 save section is registered with its vanilla size (so the save layout never changes)."""
+        if self.u32(STORAGE_SAVE_SITES[0][0]) != _b(STORAGE_SAVE_SITES[0][0], STORAGE_SAVE_AT):
+            return
+        if self.u32(STORAGE_NAME_AT) != STORAGE_NAME or self.u32(STORAGE_COUNT_AT) != STORAGE_VANILLA:
+            return
+        size = self._section_size("ItemBag1")
+        if size == 12 + 16 * STORAGE_VANILLA:
+            self.w32(STORAGE_COUNT_AT, STORAGE_SLOTS)
+            self.say_once("storage_on", "Expanded Storage: Storage has 45 slots from the next save loaded.")
+        else:
+            self.say_once("storage_wait", f"Expanded Storage: waiting for the save sections (ItemBag1 size {size}).")
+
+    def manage_storage(self) -> None:
+        """Expanded Storage: a 45-slot Storage shows all 45, slots 36-45 kept in the save's flag data."""
+        self.set_storage_count()
+        lst = self._list("storage")
+        d = self._section(DELIVERED_SECTION)
+        if not lst or not d or not self.in_game():
+            return
+        base, used, slots = lst
+        if self.u32(base + 4) != STORAGE_SLOTS:
+            return                                    # a 35-slot Storage (session started before the change)
+        extra = STORAGE_SLOTS - STORAGE_VANILLA
+        if used != STORAGE_SLOTS:                     # a save was just loaded ("in use" = 35)
+            keep = self.rd(d + STORAGE_KEEP_OFF, 4 * extra)
+            buf = b"".join(struct.pack(">IB", item, count if item else 0).ljust(16, b"\0")
+                           for item, count in (struct.unpack_from(">HB", keep, 4 * k) for k in range(extra)))
+            self.w(slots + STORAGE_VANILLA * 16, buf)
+            self.w32(base, STORAGE_SLOTS)
+            return
+        data = self.rd(slots + STORAGE_VANILLA * 16, extra * 16)
+        keep = b"".join(struct.pack(">HBB", *struct.unpack_from(">IB", data, 16 * k), 0) for k in range(extra))
+        if self.rd(d + STORAGE_KEEP_OFF, len(keep)) != keep:
+            self.w(d + STORAGE_KEEP_OFF, keep)
+
+    def set_fish_junk_coins(self) -> None:
+        """Franky's Supplies (0.31.0, user): every fishing junk item (spot records +0x30: 4 x {u32 global id, u16
+        weight, u16 flag}) is an Old Gold Coin. Junk ids are global ids; the coin's is taken from the spots that already
+        have it (vanilla: 11995 / 11996 junk 3, 11997 / 12996 / 14995 junk 4)."""
+        p = self.u32(self.FISH_MGR + self.FISHP_OFF)
+        if not valid(p):
+            return
+        recs = []
+        for r in range(self.FISHP_MAX):
+            rec = self.rd(p + r * self.FISHP_REC, self.FISHP_REC)
+            if not 0x4C9E <= struct.unpack_from(">I", rec, 0)[0] <= 0x4CA2:
+                break
+            recs.append((r, rec))
+        known = {11995: 2, 11996: 2, 11997: 3, 12996: 3, 14995: 3}
+        votes: Dict[int, int] = {}
+        for _r, rec in recs:
+            k = known.get(struct.unpack_from(">I", rec, 4)[0])
+            if k is not None:
+                g = struct.unpack_from(">I", rec, 0x30 + 8 * k)[0]
+                votes[g] = votes.get(g, 0) + 1
+        if not votes:
+            return
+        coin, n = max(votes.items(), key=lambda kv: kv[1])
+        if n < 3 and len(votes) > 1:
+            return                                   # not the coin everywhere: already changed, or not as expected
+        for r, rec in recs:
+            for k in range(4):
+                g = struct.unpack_from(">I", rec, 0x30 + 8 * k)[0]
+                if g not in (0, 0xFFFFFFFF, coin):
+                    self.w32(p + r * self.FISHP_REC + 0x30 + 8 * k, coin)
 
     def activated_shrines(self) -> Set[int]:
         return {sid for sid, _, st in self._shrines() if self.rd(st, 1)[0] & 0x02}
@@ -2061,6 +2685,19 @@ class GameState:
         if self.rd(row + self.ELEMENT_GOLD, 1)[0] != want:
             self.w(row + self.ELEMENT_GOLD, bytes([want]))
 
+    # Old Gold Coin (79): 100 Gold Energy in vanilla, 10 with Archipelago (user, 0.30.1)
+    OLD_GOLD_COIN, COIN_GOLD = 79, 10
+
+    def set_coin_gold(self) -> None:
+        t = self.u32(ITEM_NAMES_PTR)
+        if not valid(t):
+            return
+        row = t + self.OLD_GOLD_COIN * 0x224
+        if struct.unpack(">H", self.rd(row + 0x42, 2))[0] != self.OLD_GOLD_COIN:
+            return
+        if self.rd(row + self.ELEMENT_GOLD, 1)[0] != self.COIN_GOLD:
+            self.w(row + self.ELEMENT_GOLD, bytes([self.COIN_GOLD]))
+
     def rename_placeholder(self) -> None:
         t = self.u32(ITEM_NAMES_PTR)
         if not valid(t):
@@ -2137,7 +2774,9 @@ class GameState:
             for a, _t, entry in self.CRAFT_SITES:
                 self.w32(a, bl(a, self.CRAFT_AT + 4 * entry))
 
-    def set_max_stacks(self, value: int = 99, craft_max: bool = False) -> None:
+    def set_max_stacks(self, value: int = 100, craft_max: bool = False) -> None:
+        """Every stackable row -> value (0.29.1: 100, user - two vanilla 50-Bomb crafts fill a stack; stacks over 99
+        were tested fine)."""
         base = self.u32(self.ITEM_TABLE_REF)
         if not valid(base):
             return
@@ -2195,16 +2834,39 @@ class GameState:
                 self.w32(o + 0x34, 0)
 
     def setup_recipes(self, comments: Dict[Tuple[str, int], str], hidden: Set[Tuple[str, int]] = frozenset(),
-                      veiled: Set[Tuple[str, int]] = frozenset()) -> None:
+                      veiled: Set[Tuple[str, int]] = frozenset(),
+                      custom: Optional[Dict[Tuple[str, int], Tuple[int, List[Tuple[int, int]], bool]]] = None,
+                      rooms: Iterable[str] = CRAFT_ROOMS) -> None:
         """Every recipe listed + discovered (no recipe chains), key-item recipes give the placeholder for good,
-        and their comments say whose item it is."""
-        for room in ("workshop", "kitchen", "pharmacy"):
+        and their comments say whose item it is. custom (0.30.0): rows the client writes itself, (room, row) ->
+        (result, [(ingredient, count), ...], Archipelago result?): the random recipes (Extra Crafting Recipes,
+        Franky's Archipelago Trades) and Franky's fixed trades."""
+        custom = custom or {}
+        for room in rooms:
             o = self._recipe_state_obj(room)
             p = self._recipe_row(room, 0)
             if not o or not p:
                 continue
             st = bytearray(self.rd(o + 4, 32))
-            rows = self.rd(p, 252 * 32)
+            rows = bytearray(self.rd(p, 252 * 32))
+            # Row: +0 u16 result, +2 u16, +4 4 x {u16 ingredient, u8 count, u8 flag}. A made Archipelago row asks for
+            # one Archipelago Item, which the player never carries (the client removes it): it can't be made again.
+            locked = struct.pack(">HBB", PLACEHOLDER, 1, 0) + bytes(12)
+            ap_rows = set(DUMMY_RECIPES.get(room, []))
+            for (rm, r), (result, ing, ap) in custom.items():
+                if rm != room:
+                    continue
+                if ap:
+                    ap_rows.add(r)
+                    body = struct.pack(">HH", PLACEHOLDER, 0) + (
+                        locked if st[r] & 0x08 else
+                        b"".join(struct.pack(">HBB", g, n, 0) for g, n in ing[:4]) + bytes(4 * (4 - len(ing[:4]))))
+                else:
+                    body = struct.pack(">HH", result, 0) + b"".join(struct.pack(">HBB", g, n, 0) for g, n in ing[:4]) \
+                        + bytes(4 * (4 - len(ing[:4])))
+                if rows[r * 252:r * 252 + 20] != body:
+                    self.w(p + r * 252, body)
+                    rows[r * 252:r * 252 + 20] = body
             new = bytearray(st)
             for r in range(32):
                 # State bits: 0x01 listed (shown in the menu, counted by 0x800F5C9C), 0x04 "idea" already had
@@ -2222,35 +2884,32 @@ class GameState:
             if new != st:
                 self.w(o + 4, bytes(new))
             # vanilla-result recipes: the AP comment until made, then the game's own comment again
-            dummies = set(DUMMY_RECIPES.get(room, []))
             for r in range(32):
-                if r in dummies or not struct.unpack_from(">H", rows, r * 252)[0]:
+                if r in ap_rows or not struct.unpack_from(">H", rows, r * 252)[0]:
                     continue
-                text = RECIPE_COMMENTS.get(room, {}).get(r) if new[r] & 0x08 else comments.get((room, r))
+                if new[r] & 0x08:
+                    text = FRANKY_DONE_COMMENT if (room, r) in custom else RECIPE_COMMENTS.get(room, {}).get(r)
+                else:
+                    text = comments.get((room, r))
                 if text:
                     b = (text.encode("utf-16-be") + b"\0\0").ljust(224, b"\0")
                     if rows[r * 252 + 28:r * 252 + 252] != b:
                         self.w(p + r * 252 + 28, b)
-            for r in DUMMY_RECIPES.get(room, []):
+            for r in sorted(ap_rows):
                 a = p + r * 252
                 if struct.unpack_from(">H", rows, r * 252)[0] not in (0, PLACEHOLDER):
                     self.w(a, struct.pack(">H", PLACEHOLDER))
-                # Once made (check sent), the recipe asks for one Archipelago Item, which the player never
-                # carries (the client removes it), so it can't be made again by accident.
-                # Row: +0 u16 result, +2 u16, +4 4 x {u16 ingredient, u8 count, u8 flag}.
-                if new[r] & 0x08:
-                    locked = struct.pack(">HBB", PLACEHOLDER, 1, 0) + bytes(12)
-                    if rows[r * 252 + 4:r * 252 + 20] != locked:
-                        self.w(a + 4, locked)
+                if new[r] & 0x08 and rows[r * 252 + 4:r * 252 + 20] != locked:
+                    self.w(a + 4, locked)
                 text = comments.get((room, r))
                 if text:
                     b = (text.encode("utf-16-be") + b"\0\0").ljust(224, b"\0")
-                    if self.rd(a + 28, 224) != b:
+                    if rows[r * 252 + 28:r * 252 + 252] != b:
                         self.w(a + 28, b)
 
-    def crafted(self) -> Set[Tuple[str, int]]:
+    def crafted(self, rooms: Iterable[str] = CRAFT_ROOMS) -> Set[Tuple[str, int]]:
         out = set()
-        for room in ("workshop", "kitchen", "pharmacy"):
+        for room in rooms:
             o = self._recipe_state_obj(room)
             if not o:
                 continue

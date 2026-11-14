@@ -11,13 +11,21 @@ One Piece Unlimited Cruise 1:
   # Options: luffy, zoro, usopp, sanji, nami, chopper, robin, franky, brook
   starting_character: luffy
 
-  # Goal: Which boss ends the game. Every island (Wooded Isle, Gorge Isle, Iceberg Isle and Central
-  # Isle) and its bosses are in every seed; islands other than the Wooded Isle open with their island
-  # item. god_eneru: "God" Eneru on the Wooded Isle. gecko_moria: Gecko Moria on the Gorge Isle. aokiji:
-  # Aokiji on the Iceberg Isle. doom_guardian: the Doom Guardian on Central Isle, behind The Final Door.
-  # With any goal but doom_guardian, the Doom Guardian fight is left out (no "The Final Door" item).
-  # Options: god_eneru, gecko_moria, aokiji, doom_guardian
+  # Goal: Which boss ends the game. Every island (Wooded Isle, Gorge Isle, Iceberg Isle, Cave Isle and
+  # Central Isle) and its bosses are in every seed; islands other than the Wooded Isle open with their
+  # island item. god_eneru: "God" Eneru on the Wooded Isle. gecko_moria: Gecko Moria on the Gorge Isle.
+  # aokiji: Aokiji on the Iceberg Isle. blackbeard: Blackbeard on the Cave Isle. doom_guardian: the Doom
+  # Guardian on Central Isle, behind The Final Door. With any goal but doom_guardian, the Doom Guardian
+  # fight is left out (no "The Final Door" item).
+  # Options: god_eneru, gecko_moria, aokiji, blackbeard, doom_guardian
   goal: doom_guardian
+
+  # Extra Final Door Requirement: Goal doom_guardian only. What else The Final Door needs (besides its
+  # item and its Energy). none: nothing else. island_bosses: every Mid Boss and Island Boss beaten
+  # (Kuma, Eneru, Kuro, Krieg, Moria, Wapol, Spandam, Aokiji, Ace, Blackbeard). all_bosses: those and
+  # every Secret Boss (Buggy, Nightmare Luffy, Rampaging Chopper, Evil Guardian).
+  # Options: none, island_bosses, all_bosses
+  extra_final_door_requirement: none
 
   # Death Link: When any Straw Hat is defeated, everyone else in the multiworld with Death Link on dies
   # too. When someone else dies, the Straw Hat you're controlling takes a fatal hit (the next crew
@@ -31,7 +39,52 @@ One Piece Unlimited Cruise 1:
   # true / false
   falling_death_link: true
 
+  # ---- Gabri Options -----------------------------------------------------
+  # Gabri Energy Items: How Gabri's Energy grows. progressive_level: 13 Progressive Gabri Level items,
+  # each one a level of the base game (more bars of several colours at once). per_colour: each colour
+  # levels up on its own - Progressive Gabri Level (Red / Green / Blue / White / Black / Gold). Gabri
+  # starts with 1 Blue bar (enough to leave the Prologue) and nothing else; each colour goes up to 10
+  # bars (see How Many Gabri Level Items).
+  # Options: progressive_level, per_colour
+  gabri_energy_items: progressive_level
+
+  # Starting Gabri Energy: With Gabri Energy Items: per_colour only. The Energy Gabri starts with.
+  # vanilla: 3 Blue bars, like the base game (enough for the first real shrine on the Wooded Isle).
+  # one_blue_energy: 1 Blue bar (enough to leave the Prologue). all_energy: 1 bar of each of the six
+  # Energy types.
+  # Options: vanilla, one_blue_energy, all_energy
+  starting_gabri_energy: vanilla
+
+  # How Many Gabri Level Items: With Gabri Energy Items: per_colour only. How many items each colour
+  # has. 10: each item is one bar (a colour Gabri starts with has fewer items). 5: each item is two bars
+  # (the last one only fills a colour up to 10). 15: each item is one bar and every colour goes up to 15
+  # bars instead of 10 (shrine costs stay the same). Starting Gabri Energy is taken into account: every
+  # colour ends at its cap (10, or 15), never more.
+  # Options: 10, 5, 15
+  gabri_level_items: '10'
+
+  # Energy Link: Energy Link: Gabri's Energy can be converted into the multiworld's shared Energy Link
+  # bank, and withdrawn from it, in the client's Gabri Energy tab (1 Energy = 10 MJ, Gold Energy 20 MJ;
+  # converting keeps 80%, a 20% cut). Withdrawing never goes past Gabri's current cap. Off: the tab
+  # still shows Gabri's Energy, levels and caps.
+  # true / false
+  energy_link: false
+
+  # Wherever Cannon Unlock: How the Thousand Sunny's Wherever Cannon is unlocked. build_site: as in the
+  # base game - its build site (on the Sunny, once Gorge Isle has been reached) needs the "Thousand
+  # Sunny Build Site 1 Access" item, Gabri's Energy and the offered items, and building it is a
+  # location. own_item: "The Wherever Cannon" item gives the finished cannon (the game's own build-
+  # finished scene plays the next time you're on the Sunny); the build site and its location are gone.
+  # start_with: like own_item, but you start with the cannon.
+  # Options: build_site, own_item, start_with
+  wherever_cannon_unlock: own_item
+
   # ---- Item Options ------------------------------------------------------
+  # Materialsanity: Picking up each natural material for the first time (Bitter Grass, Bamboo, Marble,
+  # Iron Scrap ... 40 of them) is a location, named "Got <material>".
+  # true / false
+  materialsanity: false
+
   # Early Pickaxe: The Pickaxe is placed early (in the first sphere of the multiworld).
   # true / false
   early_pickaxe: false
@@ -66,33 +119,107 @@ One Piece Unlimited Cruise 1:
   # true / false
   treasure_maps_need_every_fragment: false
 
-  # Include Gunpowder Logic: Gunpowder counts as another way through rock paths (Wooded Isle Part 2
-  # right side, Iceberg Isle's ice rock routes, the chests and monument behind rock paths) and to blow
-  # open X dig spots (Clay, Marble, Pure Iron Ore). Random plain-ground digs and treasure map chests
-  # always need the Pickaxe. Off: only the Pickaxe is expected for any of these.
+  # Include Gunpowder Logic: Gunpowder (or Bombs, which work the same way) counts as another way through
+  # rock paths (Wooded Isle Part 2 right side, Iceberg Isle's ice rock routes, the way into Cave Isle
+  # Part 2, the chests and monument behind rock paths) and to blow open X dig spots (Clay, Marble, Pure
+  # Iron Ore, Volcanic Rock). Random plain-ground digs and treasure map chests always need the Pickaxe.
+  # Off: only the Pickaxe is expected for any of these.
   # true / false
   include_gunpowder_logic: true
 
-  # Enemy Gunpowder Drop Logic: Whether Gunpowder from enemies counts for logic (compounding it at
-  # Chopper's Pharmacy always does). Does nothing without Include Gunpowder Logic. none: enemy Gunpowder
-  # is never expected. included: gunners in Gorge Isle Part 3 / Iceberg Isle Part 1 count as a source.
-  # whirlwind: they count only with Nami and her Whirlwind (to steal it consistently).
+  # Enemy Gunpowder Drop Logic: Whether Gunpowder and Bombs from enemies count for logic (compounding
+  # Gunpowder at Chopper's Pharmacy and crafting Bombs at Usopp's Workshop always do). For rock paths
+  # and X dig spots it does nothing without Include Gunpowder Logic; it also decides whether enemy drops
+  # count for shrine offerings (Gunpowder, Bombs). none: enemy Gunpowder / Bombs are never expected.
+  # included: the gunners in Gorge Isle Part 3, Iceberg Isle Part 1 and Cave Isle Part 1 (Gunpowder) and
+  # the Knuckle Soldiers in Cave Isle Part 2 (Bombs) count as a source. whirlwind: they count only with
+  # Nami and her Whirlwind (to steal them consistently).
   # Options: none, included, whirlwind
   enemy_gunpowder_drop_logic: included
 
-  # Enemy Gunpowder Drop Rate: Chance (%) that the gunners (the enemies whose common drop is Gunpowder)
-  # drop Gunpowder when defeated, and that Nami's Whirlwind steals it from them (vanilla: 5% for Pirate
-  # and Agent gunners, 4% for Navy gunners; 5 is about vanilla). Cat Burglar multiplies the steal chance
-  # (Level 1 x3, Level 2 x4, Level 3 x5), up to 100%.
+  # Enemy Gunpowder Drop Rate: Chance (%) that the enemies whose common drop is Gunpowder or Bombs (the
+  # gunners, and the Knuckle Soldiers on the Cave Isle) drop it when defeated, and that Nami's Whirlwind
+  # steals it from them (vanilla: 5% for Pirate and Agent gunners, 4% for Navy gunners; 5 is about
+  # vanilla). Cat Burglar multiplies the steal chance (Level 1 x3, Level 2 x4, Level 3 x5), up to 100%.
   # Range: 5-100
   enemy_gunpowder_drop_rate: 20
 
-  # Stack Craftables Make Max Copies: Every stackable item can be held up to 99. Items the game crafts
+  # Stack Craftables Make Max Copies: Every stackable item can be held up to 100. Items the game crafts
   # (or hands out) as a full stack - Traps, Flamethrowers, Batteries, Bombs and the powders - normally
   # come in their vanilla amount (for example 10 Traps, 30 Gunpowder, 50 Bombs). With this on, they come
-  # as a full stack of 99 instead.
+  # as a full stack of 100 instead.
   # true / false
   stack_craftables_make_max_copies: false
+
+  # ---- Crafting Recipe Options -------------------------------------------
+  # Usopp's Workshop Unlock Condition: What opens Usopp's Workshop (crafting). start_with: open from the
+  # start, no item (like the base game). own_item: the "Usopp's Workshop" item. usopp: having Usopp in
+  # the crew, no item. own_item_and_usopp: the item and Usopp.
+  # Options: start_with, own_item, usopp, own_item_and_usopp
+  workshop_unlock: own_item
+
+  # Usopp Is Required for Art of Development: Art of Development levels are only given once Usopp has
+  # joined the crew (received items wait until then).
+  # true / false
+  usopp_required_for_art: false
+
+  # Sanji's Kitchen Unlock Condition: What opens Sanji's Kitchen (cooking). vanilla: opens after the
+  # first island boss you beat, like the base game; no item. start_with: open from the start, no item.
+  # own_item: the "Sanji's Kitchen" item. sanji: having Sanji in the crew, no item. own_item_and_sanji:
+  # the item and Sanji.
+  # Options: vanilla, start_with, own_item, sanji, own_item_and_sanji
+  kitchen_unlock: own_item
+
+  # Sanji Is Required for Art of Cooking: Art of Cooking levels are only given once Sanji has joined the
+  # crew (received items wait until then).
+  # true / false
+  sanji_required_for_art: false
+
+  # Chopper's Pharmacy Unlock Condition: What opens Chopper's Pharmacy (compounding). vanilla: opens
+  # after the first island boss you beat, like the base game; no item. start_with: open from the start,
+  # no item. own_item: the "Chopper's Pharmacy" item. chopper: having Tony Tony Chopper in the crew, no
+  # item. own_item_and_chopper: the item and Chopper.
+  # Options: vanilla, start_with, own_item, chopper, own_item_and_chopper
+  pharmacy_unlock: own_item
+
+  # Chopper Is Required for Art of Compounding: Art of Compounding levels are only given once Tony Tony
+  # Chopper has joined the crew (received items wait until then).
+  # true / false
+  chopper_required_for_art: false
+
+  # Enable Franky's Supplies: Adds Franky's Supplies: the game's unused second Development menu,
+  # repurposed as more Archipelago crafting recipes, paid mostly in Old Gold Coins (opened from the two
+  # outside Storage spots on the Thousand Sunny; in the pause menu's Instructions, A in the Development
+  # tab switches to Franky's list). Old Gold Coins also come from: the Flour / Hardtack Ration barrels,
+  # the Golden Hercules (1-5, instead of Sticky Sap), fishing junk, the Cave Isle's Sea Anemones
+  # (instead of Black Orbs) and the Thousand Sunny's dust spots (instead of random Orbs); they are
+  # filler too. Franky's Supply skill is renamed "Art of Supplying" (and its item); each level unlocks
+  # more of Franky's recipes, and it still lowers the materials Build Sites need.
+  # true / false
+  franky_supplies: true
+
+  # Franky's Supplies Unlock Condition: What opens Franky's Supplies (does nothing without Enable
+  # Franky's Supplies). start_with: open from the start, no item. own_item: the "Franky's Supplies"
+  # item. franky: having Franky in the crew, no item. own_item_and_franky: the item and Franky.
+  # Options: start_with, own_item, franky, own_item_and_franky
+  franky_supplies_unlock: own_item
+
+  # Franky Is Required for Art of Supplying: Art of Supplying levels are only given once Franky has
+  # joined the crew (received items wait until then).
+  # true / false
+  franky_required_for_art: false
+
+  # Extra Crafting Recipes: Fills the empty recipe slots of Usopp's Workshop (6), Sanji's Kitchen (11)
+  # and Chopper's Pharmacy (15) with random recipes that make Archipelago Items ("<menu> - Extra Recipe
+  # #n" locations).
+  # true / false
+  extra_crafting_recipes: true
+
+  # Quick Fish & Creature Recipes: Development, cooking and compounding recipes need only 1 of each fish
+  # or creature they use (e.g. Saury Full Course: 1 Shining Saury instead of 5; Special Item Bag: 1
+  # Shark instead of 2). Sea King parts count too.
+  # true / false
+  quick_recipes: false
 
   # ---- Characters, Moves & Skills Options --------------------------------
   # Move EXP Multiplier: Moves gain levels faster: 2X to 5X move EXP (every per-level requirement
@@ -106,25 +233,41 @@ One Piece Unlimited Cruise 1:
   # Options: off, on, unimportant
   super_move_locations: unimportant
 
+  # Chopper & Brook Always Have Cold Resistance: Chopper and Brook always have Cold Resistance, as if
+  # they had used an Anti-Cold Cream (cold areas stop SP from regenerating for everyone else).
+  # true / false
+  chopper_brook_cold_resistance: true
+
+  # Nami Is Required for Treasure Maps: Treasure Map Fragments are only given once Nami has joined the
+  # crew (received fragments wait until then).
+  # true / false
+  nami_required_for_maps: false
+
+  # Robin Is Required for Stone Monuments: Stone Monuments can't be read (touching them does nothing)
+  # until Nico Robin has joined the crew.
+  # true / false
+  robin_required_for_monuments: false
+
+  # Franky Is Required for Build Sites: Build Sites stay locked (impossible cost) until Franky has
+  # joined the crew and their Access item is found. Everything behind a Build Site (like the secret
+  # boss) needs Franky as well.
+  # true / false
+  franky_required_for_build_sites: false
+
   # Nami's Cat Burglar Item Type: Whether "Nami - Progressive Cat Burglar" is a Useful or Progression
   # item (progression here is progression that skips balancing).
   # Options: useful, progression
   cat_burglar_item_type: useful
-
-  # Brook's Light Weight Item Type: Whether "Brook - Progressive Light Weight" is a Useful or
-  # Progression item (progression here is progression that skips balancing).
-  # Options: useful, progression
-  light_weight_item_type: useful
 
   # Robin's Flower Flower Power Item Type: Whether "Robin - Progressive Flower Flower Power" is a Useful
   # or Progression item (progression here is progression that skips balancing).
   # Options: useful, progression
   flower_power_item_type: useful
 
-  # Chopper & Brook Always Have Cold Resistance: Chopper and Brook always have Cold Resistance, as if
-  # they had used an Anti-Cold Cream (cold areas stop SP from regenerating for everyone else).
-  # true / false
-  chopper_brook_cold_resistance: true
+  # Brook's Light Weight Item Type: Whether "Brook - Progressive Light Weight" is a Useful or
+  # Progression item (progression here is progression that skips balancing).
+  # Options: useful, progression
+  light_weight_item_type: useful
 
   # ---- Fishing & Bug-Catching Options ------------------------------------
   # Fishsanity: Catching each fish for the first time is a location. on: the locations can hold
@@ -139,13 +282,13 @@ One Piece Unlimited Cruise 1:
 
   # How Many Fish Locations: How many fish locations there are, picked at random from the fish catchable
   # in this world.
-  # Range: 1-17
-  fish_locations: 17
+  # Range: 1-20
+  fish_locations: 20
 
   # How Many Creature Locations: How many creature locations there are, picked at random from the
   # creatures catchable in this world.
-  # Range: 1-16
-  creature_locations: 16
+  # Range: 1-20
+  creature_locations: 20
 
   # Combine Fishing Rod & Line Levels: No Rod Line items: each Rod Level item also raises the line level
   # by the same step (with 6 items of each, one Rod Level item = +5 rod and +5 line). Off: Rod Level and
@@ -165,6 +308,10 @@ One Piece Unlimited Cruise 1:
   # true / false
   equalise_fish_rates: false
 
+  # Easier Fish: Fish pull 50% less hard while you reel them in.
+  # true / false
+  easier_fish: false
+
   # Better Traps: A set trap always catches something and keeps it until you check the trap, and catches
   # after 10 minutes of play; leaving the trap's area once (another zone, or off the Thousand Sunny)
   # finishes it straight away. What it catches is still random. (Vanilla: a trap has a random lifetime
@@ -178,12 +325,6 @@ One Piece Unlimited Cruise 1:
   # Mystery Eggs from Seagulls).
   # true / false
   guaranteed_creature_drops: true
-
-  # Quick Recipes: Development, cooking and compounding recipes need only 1 of each fish or creature
-  # they use (e.g. Saury Full Course: 1 Shining Saury instead of 5; Special Item Bag: 1 Shark instead of
-  # 2). Sea King parts count too.
-  # true / false
-  quick_recipes: false
 
   # ---- Quality of Life Options -------------------------------------------
   # Crafting Recipes Are Discovered Through Arts: Development / Cooking / Compounding recipes only show
@@ -224,61 +365,15 @@ One Piece Unlimited Cruise 1:
   # Better Plant Drop Rates: Bitter Grass, Medicinal Herbs and Nectar drop more often from their plants
   # (Bitter Grass / Medicinal Herbs / Nectar): normal hits 25% / 60% / 25% (vanilla 10% / 60% / 15%),
   # slash hits 50% / 80% / 50% (vanilla as normal hits), Vacuum Cleaner 75% / 100% / 75% (vanilla 30% /
-  # 100% / 30%). The Pickaxe counts as a normal hit; fire still burns them to Ashes.
+  # 100% / 30%). The Pickaxe counts as a normal hit. Fire attacks burn them to Ashes 80% of the time
+  # (vanilla 8-10%). The Cave Isle's Sea Lilies drop Mysterious Seaweed 80% of the time (vanilla 20%).
   # true / false
   better_plant_drop_rates: true
 
-  # ---- Thousand Sunny & Crew Gating Options ------------------------------
-  # Usopp's Workshop Unlock Condition: What opens Usopp's Workshop (crafting). start_with: open from the
-  # start, no item (like the base game). own_item: the "Usopp's Workshop" item. usopp: having Usopp in
-  # the crew, no item. own_item_and_usopp: the item and Usopp.
-  # Options: start_with, own_item, usopp, own_item_and_usopp
-  workshop_unlock: own_item
-
-  # Usopp Is Required for Art of Development: Art of Development levels are only given once Usopp has
-  # joined the crew (received items wait until then).
+  # Expanded Storage: The Thousand Sunny's Storage has 45 slots instead of 35 (9 per row; the menu can't
+  # show more). The 10 extra slots are kept by the client in the save's own data.
   # true / false
-  usopp_required_for_art: false
-
-  # Sanji's Kitchen Unlock Condition: What opens Sanji's Kitchen (cooking). vanilla: opens after the
-  # first island boss you beat, like the base game; no item. own_item: the "Sanji's Kitchen" item.
-  # sanji: having Sanji in the crew, no item. own_item_and_sanji: the item and Sanji. start_with: open
-  # from the start, no item.
-  # Options: vanilla, own_item, sanji, own_item_and_sanji, start_with
-  kitchen_unlock: own_item
-
-  # Sanji Is Required for Art of Cooking: Art of Cooking levels are only given once Sanji has joined the
-  # crew (received items wait until then).
-  # true / false
-  sanji_required_for_art: false
-
-  # Chopper's Pharmacy Unlock Condition: What opens Chopper's Pharmacy (compounding). vanilla: opens
-  # after the first island boss you beat, like the base game; no item. own_item: the "Chopper's
-  # Pharmacy" item. chopper: having Tony Tony Chopper in the crew, no item. own_item_and_chopper: the
-  # item and Chopper. start_with: open from the start, no item.
-  # Options: vanilla, own_item, chopper, own_item_and_chopper, start_with
-  pharmacy_unlock: own_item
-
-  # Chopper Is Required for Art of Compounding: Art of Compounding levels are only given once Tony Tony
-  # Chopper has joined the crew (received items wait until then).
-  # true / false
-  chopper_required_for_art: false
-
-  # Nami Is Required for Treasure Maps: Treasure Map Fragments are only given once Nami has joined the
-  # crew (received fragments wait until then).
-  # true / false
-  nami_required_for_maps: false
-
-  # Robin Is Required for Stone Monuments: Stone Monuments can't be read (touching them does nothing)
-  # until Nico Robin has joined the crew.
-  # true / false
-  robin_required_for_monuments: false
-
-  # Franky Is Required for Build Sites: Build Sites stay locked (impossible cost) until Franky has
-  # joined the crew and their Access item is found. Everything behind a Build Site (like the secret
-  # boss) needs Franky as well.
-  # true / false
-  franky_required_for_build_sites: false
+  expanded_storage: true
 
   # ---- Starting Costumes -------------------------------------------------
   # Each Straw Hat's outfit at the start of the game. Costumes can be changed later on at the Thousand

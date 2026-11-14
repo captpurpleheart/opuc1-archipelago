@@ -21,20 +21,35 @@ class StartingCharacter(Choice):
 
 
 class Goal(Choice):
-    """Which boss ends the game. Every island (Wooded Isle, Gorge Isle, Iceberg Isle and Central Isle) and its bosses
-    are in every seed; islands other than the Wooded Isle open with their island item.
+    """Which boss ends the game. Every island (Wooded Isle, Gorge Isle, Iceberg Isle, Cave Isle and Central Isle) and
+    its bosses are in every seed; islands other than the Wooded Isle open with their island item.
     god_eneru: "God" Eneru on the Wooded Isle. gecko_moria: Gecko Moria on the Gorge Isle. aokiji: Aokiji on the
-    Iceberg Isle. doom_guardian: the Doom Guardian on Central Isle, behind The Final Door.
+    Iceberg Isle. blackbeard: Blackbeard on the Cave Isle. doom_guardian: the Doom Guardian on Central Isle, behind
+    The Final Door.
     With any goal but doom_guardian, the Doom Guardian fight is left out (no "The Final Door" item)."""
     display_name = "Goal"
     option_god_eneru = 0
     option_gecko_moria = 1
     option_aokiji = 3
+    option_blackbeard = 4
     option_doom_guardian = 2
     alias_wooded_isle = 0     # older YAMLs
     alias_gorge_isle = 1
     alias_central_isle = 2
     default = 2
+
+
+class ExtraFinalDoorRequirement(Choice):
+    """Goal doom_guardian only. What else The Final Door needs (besides its item and its Energy).
+    none: nothing else.
+    island_bosses: every Mid Boss and Island Boss beaten (Kuma, Eneru, Kuro, Krieg, Moria, Wapol, Spandam, Aokiji, Ace,
+    Blackbeard).
+    all_bosses: those and every Secret Boss (Buggy, Nightmare Luffy, Rampaging Chopper, Evil Guardian)."""
+    display_name = "Extra Final Door Requirement"
+    option_none = 0
+    option_island_bosses = 1
+    option_all_bosses = 2
+    default = 0
 
 
 class CombineRodAndLine(Toggle):
@@ -133,32 +148,32 @@ class WorkshopUnlock(Choice):
 class KitchenUnlock(Choice):
     """What opens Sanji's Kitchen (cooking).
     vanilla: opens after the first island boss you beat, like the base game; no item.
+    start_with: open from the start, no item.
     own_item: the "Sanji's Kitchen" item.
     sanji: having Sanji in the crew, no item.
-    own_item_and_sanji: the item and Sanji.
-    start_with: open from the start, no item."""
+    own_item_and_sanji: the item and Sanji."""
     display_name = "Sanji's Kitchen Unlock Condition"
     option_vanilla = 0
+    option_start_with = 4
     option_own_item = 1
     option_sanji = 2
     option_own_item_and_sanji = 3
-    option_start_with = 4
     default = 1
 
 
 class PharmacyUnlock(Choice):
     """What opens Chopper's Pharmacy (compounding).
     vanilla: opens after the first island boss you beat, like the base game; no item.
+    start_with: open from the start, no item.
     own_item: the "Chopper's Pharmacy" item.
     chopper: having Tony Tony Chopper in the crew, no item.
-    own_item_and_chopper: the item and Chopper.
-    start_with: open from the start, no item."""
+    own_item_and_chopper: the item and Chopper."""
     display_name = "Chopper's Pharmacy Unlock Condition"
     option_vanilla = 0
+    option_start_with = 4
     option_own_item = 1
     option_chopper = 2
     option_own_item_and_chopper = 3
-    option_start_with = 4
     default = 1
 
 
@@ -205,7 +220,7 @@ class EqualiseFishRates(Toggle):
 class QuickRecipes(Toggle):
     """Development, cooking and compounding recipes need only 1 of each fish or creature they use (e.g. Saury Full
     Course: 1 Shining Saury instead of 5; Special Item Bag: 1 Shark instead of 2). Sea King parts count too."""
-    display_name = "Quick Recipes"
+    display_name = "Quick Fish & Creature Recipes"
 
 
 class IronScrapGivesGoldEnergy(DefaultOnToggle):
@@ -229,9 +244,124 @@ class BetterRandomDigItemRates(DefaultOnToggle):
 class BetterPlantDropRates(DefaultOnToggle):
     """Bitter Grass, Medicinal Herbs and Nectar drop more often from their plants (Bitter Grass / Medicinal Herbs /
     Nectar): normal hits 25% / 60% / 25% (vanilla 10% / 60% / 15%), slash hits 50% / 80% / 50% (vanilla as normal
-    hits), Vacuum Cleaner 75% / 100% / 75% (vanilla 30% / 100% / 30%). The Pickaxe counts as a normal hit; fire still
-    burns them to Ashes."""
+    hits), Vacuum Cleaner 75% / 100% / 75% (vanilla 30% / 100% / 30%). The Pickaxe counts as a normal hit. Fire attacks
+    burn them to Ashes 80% of the time (vanilla 8-10%). The Cave Isle's Sea Lilies drop Mysterious Seaweed 80% of the
+    time (vanilla 20%)."""
     display_name = "Better Plant Drop Rates"
+
+
+class ExpandedStorage(DefaultOnToggle):
+    """The Thousand Sunny's Storage has 45 slots instead of 35 (9 per row; the menu can't show more). The 10 extra
+    slots are kept by the client in the save's own data."""
+    display_name = "Expanded Storage"
+
+
+class Materialsanity(Toggle):
+    """Picking up each natural material for the first time (Bitter Grass, Bamboo, Marble, Iron Scrap ... 40 of them)
+    is a location, named "Got <material>"."""
+    display_name = "Materialsanity"
+
+
+class GabriEnergyItems(Choice):
+    """How Gabri's Energy grows.
+    progressive_level: 13 Progressive Gabri Level items, each one a level of the base game (more bars of several
+    colours at once).
+    per_colour: each colour levels up on its own - Progressive Gabri Level (Red / Green / Blue / White / Black / Gold).
+    Gabri starts with 1 Blue bar (enough to leave the Prologue) and nothing else; each colour goes up to 10 bars (see
+    How Many Gabri Level Items)."""
+    display_name = "Gabri Energy Items"
+    option_progressive_level = 0
+    option_per_colour = 1
+    default = 0
+
+
+class StartingGabriEnergy(Choice):
+    """With Gabri Energy Items: per_colour only. The Energy Gabri starts with.
+    vanilla: 3 Blue bars, like the base game (enough for the first real shrine on the Wooded Isle).
+    one_blue_energy: 1 Blue bar (enough to leave the Prologue).
+    all_energy: 1 bar of each of the six Energy types."""
+    display_name = "Starting Gabri Energy"
+    option_vanilla = 0
+    option_one_blue_energy = 1
+    option_all_energy = 2
+    default = 0
+
+
+class GabriLevelItems(Choice):
+    """With Gabri Energy Items: per_colour only. How many items each colour has.
+    10: each item is one bar (a colour Gabri starts with has fewer items).
+    5: each item is two bars (the last one only fills a colour up to 10).
+    15: each item is one bar and every colour goes up to 15 bars instead of 10 (shrine costs stay the same).
+    Starting Gabri Energy is taken into account: every colour ends at its cap (10, or 15), never more."""
+    display_name = "How Many Gabri Level Items"
+    option_10 = 10
+    option_5 = 5
+    option_15 = 15
+    default = 10
+
+
+class EnergyLink(Toggle):
+    """Energy Link: Gabri's Energy can be converted into the multiworld's shared Energy Link bank, and withdrawn from it,
+    in the client's Gabri Energy tab (1 Energy = 10 MJ, Gold Energy 20 MJ; converting keeps 80%, a 20% cut). Withdrawing
+    never goes past Gabri's current cap. Off: the tab still shows Gabri's Energy, levels and caps."""
+    display_name = "Energy Link"
+
+
+class FrankysSupplies(DefaultOnToggle):
+    """Adds Franky's Supplies: the game's unused second Development menu, repurposed as more Archipelago crafting
+    recipes, paid mostly in Old Gold Coins (opened from the two outside Storage spots on the Thousand Sunny; in the pause
+    menu's Instructions, A in the Development tab switches to Franky's list).
+    Old Gold Coins also come from: the Flour / Hardtack Ration barrels, the Golden Hercules (1-5, instead of Sticky
+    Sap), fishing junk, the Cave Isle's Sea Anemones (instead of Black Orbs) and the Thousand Sunny's dust spots
+    (instead of random Orbs); they are filler too.
+    Franky's Supply skill is renamed "Art of Supplying" (and its item); each level unlocks more of Franky's recipes, and
+    it still lowers the materials Build Sites need.
+    """
+    display_name = "Enable Franky's Supplies"
+
+
+class WhereverCannonUnlock(Choice):
+    """How the Thousand Sunny's Wherever Cannon is unlocked.
+    build_site: as in the base game - its build site (on the Sunny, once Gorge Isle has been reached) needs the
+    "Thousand Sunny Build Site 1 Access" item, Gabri's Energy and the offered items, and building it is a location.
+    own_item: "The Wherever Cannon" item gives the finished cannon (the game's own build-finished scene plays the
+    next time you're on the Sunny); the build site and its location are gone.
+    start_with: like own_item, but you start with the cannon."""
+    display_name = "Wherever Cannon Unlock"
+    option_build_site = 0
+    option_own_item = 1
+    option_start_with = 2
+    default = 1
+
+
+class FrankySuppliesUnlock(Choice):
+    """What opens Franky's Supplies (does nothing without Enable Franky's Supplies).
+    start_with: open from the start, no item.
+    own_item: the "Franky's Supplies" item.
+    franky: having Franky in the crew, no item.
+    own_item_and_franky: the item and Franky."""
+    display_name = "Franky's Supplies Unlock Condition"
+    option_start_with = 0
+    option_own_item = 1
+    option_franky = 2
+    option_own_item_and_franky = 3
+    default = 1
+
+
+class FrankyRequiredForArt(Toggle):
+    """Art of Supplying levels are only given once Franky has joined the crew (received items wait until then)."""
+    display_name = "Franky Is Required for Art of Supplying"
+
+
+class ExtraCraftingRecipes(DefaultOnToggle):
+    """Fills the empty recipe slots of Usopp's Workshop (6), Sanji's Kitchen (11) and Chopper's Pharmacy (15) with
+    random recipes that make Archipelago Items ("<menu> - Extra Recipe #n" locations)."""
+    display_name = "Extra Crafting Recipes"
+
+
+class EasierFish(Toggle):
+    """Fish pull 50% less hard while you reel them in."""
+    display_name = "Easier Fish"
 
 
 class EarlyPickaxe(Toggle):
@@ -265,19 +395,21 @@ class EarlyBagUpgrade(Choice):
 
 
 class IncludeGunpowderLogic(DefaultOnToggle):
-    """Gunpowder counts as another way through rock paths (Wooded Isle Part 2 right side, Iceberg Isle's ice rock
-    routes, the chests and monument behind rock paths) and to blow open X dig spots (Clay, Marble, Pure Iron Ore).
-    Random plain-ground digs and treasure map chests always need the Pickaxe. Off: only the Pickaxe is expected
-    for any of these."""
+    """Gunpowder (or Bombs, which work the same way) counts as another way through rock paths (Wooded Isle Part 2 right
+    side, Iceberg Isle's ice rock routes, the way into Cave Isle Part 2, the chests and monument behind rock paths)
+    and to blow open X dig spots (Clay, Marble, Pure Iron Ore, Volcanic Rock). Random plain-ground digs and treasure
+    map chests always need the Pickaxe. Off: only the Pickaxe is expected for any of these."""
     display_name = "Include Gunpowder Logic"
 
 
 class EnemyGunpowderDropLogic(Choice):
-    """Whether Gunpowder from enemies counts for logic (compounding it at Chopper's Pharmacy always does). Does
-    nothing without Include Gunpowder Logic.
-    none: enemy Gunpowder is never expected.
-    included: gunners in Gorge Isle Part 3 / Iceberg Isle Part 1 count as a source.
-    whirlwind: they count only with Nami and her Whirlwind (to steal it consistently)."""
+    """Whether Gunpowder and Bombs from enemies count for logic (compounding Gunpowder at Chopper's Pharmacy and
+    crafting Bombs at Usopp's Workshop always do). For rock paths and X dig spots it does nothing without Include
+    Gunpowder Logic; it also decides whether enemy drops count for shrine offerings (Gunpowder, Bombs).
+    none: enemy Gunpowder / Bombs are never expected.
+    included: the gunners in Gorge Isle Part 3, Iceberg Isle Part 1 and Cave Isle Part 1 (Gunpowder) and the Knuckle
+    Soldiers in Cave Isle Part 2 (Bombs) count as a source.
+    whirlwind: they count only with Nami and her Whirlwind (to steal them consistently)."""
     display_name = "Enemy Gunpowder Drop Logic"
     option_none = 0
     option_included = 1
@@ -286,9 +418,10 @@ class EnemyGunpowderDropLogic(Choice):
 
 
 class EnemyGunpowderDropRate(Range):
-    """Chance (%) that the gunners (the enemies whose common drop is Gunpowder) drop Gunpowder when defeated, and that
-    Nami's Whirlwind steals it from them (vanilla: 5% for Pirate and Agent gunners, 4% for Navy gunners; 5 is about
-    vanilla). Cat Burglar multiplies the steal chance (Level 1 x3, Level 2 x4, Level 3 x5), up to 100%."""
+    """Chance (%) that the enemies whose common drop is Gunpowder or Bombs (the gunners, and the Knuckle Soldiers on
+    the Cave Isle) drop it when defeated, and that Nami's Whirlwind steals it from them (vanilla: 5% for Pirate and
+    Agent gunners, 4% for Navy gunners; 5 is about vanilla). Cat Burglar multiplies the steal chance (Level 1 x3,
+    Level 2 x4, Level 3 x5), up to 100%."""
     display_name = "Enemy Gunpowder Drop Rate"
     range_start = 5
     range_end = 100
@@ -296,9 +429,9 @@ class EnemyGunpowderDropRate(Range):
 
 
 class StackCraftablesMakeMaxCopies(Toggle):
-    """Every stackable item can be held up to 99. Items the game crafts (or hands out) as a full stack - Traps,
+    """Every stackable item can be held up to 100. Items the game crafts (or hands out) as a full stack - Traps,
     Flamethrowers, Batteries, Bombs and the powders - normally come in their vanilla amount (for example 10 Traps,
-    30 Gunpowder, 50 Bombs). With this on, they come as a full stack of 99 instead."""
+    30 Gunpowder, 50 Bombs). With this on, they come as a full stack of 100 instead."""
     display_name = "Stack Craftables Make Max Copies"
 
 
@@ -466,9 +599,17 @@ class OPUCOptions(PerGameCommonOptions):
     # Game Options
     starting_character: StartingCharacter
     goal: Goal
+    extra_final_door_requirement: ExtraFinalDoorRequirement
     death_link: OPUCDeathLink
     falling_death_link: FallingDeathLink
+    # Gabri Options
+    gabri_energy_items: GabriEnergyItems
+    starting_gabri_energy: StartingGabriEnergy
+    gabri_level_items: GabriLevelItems
+    wherever_cannon_unlock: WhereverCannonUnlock
+    energy_link: EnergyLink
     # Item Options
+    materialsanity: Materialsanity
     early_pickaxe: EarlyPickaxe
     early_bug_catcher_net: EarlyBugCatcherNet
     early_fishing_rod: EarlyFishingRod
@@ -480,13 +621,28 @@ class OPUCOptions(PerGameCommonOptions):
     enemy_gunpowder_drop_logic: EnemyGunpowderDropLogic
     enemy_gunpowder_drop_rate: EnemyGunpowderDropRate
     stack_craftables_make_max_copies: StackCraftablesMakeMaxCopies
+    # Crafting Recipe Options
+    workshop_unlock: WorkshopUnlock
+    usopp_required_for_art: UsoppRequiredForArt
+    kitchen_unlock: KitchenUnlock
+    sanji_required_for_art: SanjiRequiredForArt
+    pharmacy_unlock: PharmacyUnlock
+    chopper_required_for_art: ChopperRequiredForArt
+    franky_supplies: FrankysSupplies
+    franky_supplies_unlock: FrankySuppliesUnlock
+    franky_required_for_art: FrankyRequiredForArt
+    extra_crafting_recipes: ExtraCraftingRecipes
+    quick_recipes: QuickRecipes
     # Characters, Moves & Skills Options
     move_exp_multiplier: MoveExpMultiplier
     super_move_locations: SuperMoveLocations
-    cat_burglar_item_type: CatBurglarItemType
-    light_weight_item_type: LightWeightItemType
-    flower_power_item_type: FlowerPowerItemType
     chopper_brook_cold_resistance: ChopperBrookColdResistance
+    nami_required_for_maps: NamiRequiredForMaps
+    robin_required_for_monuments: RobinRequiredForMonuments
+    franky_required_for_build_sites: FrankyRequiredForBuildSites
+    cat_burglar_item_type: CatBurglarItemType
+    flower_power_item_type: FlowerPowerItemType
+    light_weight_item_type: LightWeightItemType
     # Fishing & Bug-Catching Options
     fishsanity: Fishsanity
     creaturesanity: Creaturesanity
@@ -495,9 +651,9 @@ class OPUCOptions(PerGameCommonOptions):
     combine_rod_and_line: CombineRodAndLine
     rod_upgrade_items: RodUpgradeItems
     equalise_fish_rates: EqualiseFishRates
+    easier_fish: EasierFish
     better_traps: BetterTraps
     guaranteed_creature_drops: GuaranteedCreatureDrops
-    quick_recipes: QuickRecipes
     # Quality of Life Options
     recipes_discovered_through_arts: RecipesDiscoveredThroughArts
     recipes_spoil_locations: RecipesSpoilLocations
@@ -506,16 +662,7 @@ class OPUCOptions(PerGameCommonOptions):
     blue_orb_spot_gives_iron_ore: BlueOrbSpotGivesIronOre
     better_random_dig_item_rates: BetterRandomDigItemRates
     better_plant_drop_rates: BetterPlantDropRates
-    # Thousand Sunny & Crew Gating Options
-    workshop_unlock: WorkshopUnlock
-    usopp_required_for_art: UsoppRequiredForArt
-    kitchen_unlock: KitchenUnlock
-    sanji_required_for_art: SanjiRequiredForArt
-    pharmacy_unlock: PharmacyUnlock
-    chopper_required_for_art: ChopperRequiredForArt
-    nami_required_for_maps: NamiRequiredForMaps
-    robin_required_for_monuments: RobinRequiredForMonuments
-    franky_required_for_build_sites: FrankyRequiredForBuildSites
+    expanded_storage: ExpandedStorage
     # Starting Costumes
     luffy_starting_costume: StartingCostumeLuffy      # noqa: F821 (built above)
     zoro_starting_costume: StartingCostumeZoro        # noqa: F821
@@ -540,24 +687,27 @@ class OPUCOptions(PerGameCommonOptions):
 OPTION_GROUPS = [
     # Game Options (Starting Character, Goal, Death Link, Falling Causes a Death Link) is Archipelago's default group
     # for options not listed here; they come first in OPUCOptions so they're in that order.
-    OptionGroup("Item Options", [EarlyPickaxe, EarlyBugCatcherNet, EarlyFishingRod, EarlyVacuumCleaner,
+    OptionGroup("Gabri Options", [GabriEnergyItems, StartingGabriEnergy, GabriLevelItems, EnergyLink,
+                                  WhereverCannonUnlock]),
+    OptionGroup("Item Options", [Materialsanity, EarlyPickaxe, EarlyBugCatcherNet, EarlyFishingRod, EarlyVacuumCleaner,
                                  EarlyBagUpgrade, BagPaletteUpgradeItemType, TreasureMapsNeedEveryFragment,
                                  IncludeGunpowderLogic, EnemyGunpowderDropLogic, EnemyGunpowderDropRate,
                                  StackCraftablesMakeMaxCopies]),
-    OptionGroup("Characters, Moves & Skills Options", [MoveExpMultiplier, SuperMoveLocations, CatBurglarItemType,
-                                                       LightWeightItemType, FlowerPowerItemType,
-                                                       ChopperBrookColdResistance]),
+    OptionGroup("Crafting Recipe Options", [WorkshopUnlock, UsoppRequiredForArt, KitchenUnlock, SanjiRequiredForArt,
+                                            PharmacyUnlock, ChopperRequiredForArt, FrankysSupplies,
+                                            FrankySuppliesUnlock, FrankyRequiredForArt, ExtraCraftingRecipes,
+                                            QuickRecipes]),
+    OptionGroup("Characters, Moves & Skills Options", [MoveExpMultiplier, SuperMoveLocations,
+                                                       ChopperBrookColdResistance, NamiRequiredForMaps,
+                                                       RobinRequiredForMonuments, FrankyRequiredForBuildSites,
+                                                       CatBurglarItemType, FlowerPowerItemType, LightWeightItemType]),
     OptionGroup("Fishing & Bug-Catching Options", [Fishsanity, Creaturesanity, FishLocations, CreatureLocations,
-                                                   CombineRodAndLine, RodUpgradeItems, EqualiseFishRates,
-                                                   BetterTraps, GuaranteedCreatureDrops, QuickRecipes]),
+                                                   CombineRodAndLine, RodUpgradeItems, EqualiseFishRates, EasierFish,
+                                                   BetterTraps, GuaranteedCreatureDrops]),
     OptionGroup("Quality of Life Options", [RecipesDiscoveredThroughArts, RecipesSpoilLocations,
                                             DisableFoodDiminishingReturns, IronScrapGivesGoldEnergy,
                                             BlueOrbSpotGivesIronOre, BetterRandomDigItemRates,
-                                            BetterPlantDropRates]),
-    OptionGroup("Thousand Sunny & Crew Gating Options",
-                [WorkshopUnlock, UsoppRequiredForArt, KitchenUnlock, SanjiRequiredForArt, PharmacyUnlock,
-                 ChopperRequiredForArt, NamiRequiredForMaps, RobinRequiredForMonuments,
-                 FrankyRequiredForBuildSites]),
+                                            BetterPlantDropRates, ExpandedStorage]),
     OptionGroup("Starting Costumes", STARTING_COSTUME_OPTIONS),
     OptionGroup("Filler & Trap Weighting Options",
                 [FillerQualityWeighting, IncludeBundleFiller, BundleSizeWeighting, IncludeTraps, FoodFillerWeight,

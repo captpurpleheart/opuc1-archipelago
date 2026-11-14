@@ -1,20 +1,23 @@
 """
 One Piece Unlimited Cruise Part 1 (Wii, PAL ROUPAF) - Archipelago world.
-Prologue, Thousand Sunny, Wooded Isle, Gorge Isle, Iceberg Isle and Central Isle (every island in every seed).
-Goal: "God" Eneru, Gecko Moria, Aokiji or the Doom Guardian.
+Prologue, Thousand Sunny, Wooded Isle, Gorge Isle, Iceberg Isle, Cave Isle and Central Isle (every island in every
+seed). Goal: "God" Eneru, Gecko Moria, Aokiji, Blackbeard or the Doom Guardian.
 """
 from typing import Any, Dict, List, Tuple
 
 from BaseClasses import Item, ItemClassification, Location, Region, Tutorial
 from worlds.AutoWorld import WebWorld, World
 from worlds.generic.Rules import add_item_rule
-from worlds.LauncherComponents import Component, Type, components, launch as launch_component
+from worlds.LauncherComponents import Component, Type, components, icon_paths, launch as launch_component
 
 from . import rules as R
 from .data import (COSTUME_CHOICES, CHARACTERS, CHAR_INDEX, CRAFTS, DUMMY_RECIPES, FILLER_ITEMS, GAME, GOAL_EVENT, ITEM_IDS,
                    ITEM_TABLE, ITEMS, LOCATION_IDS, LOCATIONS, MOVE_LEVELS, MOVE_LOCATIONS, ROOM_ART,
                    ROOM_ITEM, ROOM_LOCATION_PREFIX, SUPER_MOVES, SUPER_LOCATION_NAMES, COOP_LOCATIONS, ROOM_OPTIONS,
-                   FILLER_COUNTS, filler_group, GOALS, SHRINE_OFFERING_FILLER, TRAP_ITEMS, ACTIVE_TRAPS)
+                   FILLER_COUNTS, filler_group, GOALS, SHRINE_OFFERING_FILLER, TRAP_ITEMS, ACTIVE_TRAPS,
+                   GABRI_COLOUR_ITEMS, gabri_colour_copies, EXTRA_POOLS, EXTRA_SLOTS, FRANKY_AP_ROWS, FRANKY_TRADES,
+                   RARITY_WEIGHTS, INGREDIENT_COUNT_WEIGHTS, POOL_ITEM_IDS, amount_choices, EXTRA_RECIPE_LOCATIONS,
+                   OLD_GOLD_COIN, final_door_bosses)
 from .options import OPTION_GROUPS, OPUCOptions
 
 def launch_client(*args: str) -> None:
@@ -22,8 +25,10 @@ def launch_client(*args: str) -> None:
     launch_component(launch, name="OPUCClient", args=args)
 
 
+# Launcher icon (user's image, 0.30.3)
+icon_paths["opuc1"] = f"ap:{__name__}/icon.png"
 components.append(Component("One Piece Unlimited Cruise 1 Client", func=launch_client,
-                            component_type=Type.CLIENT, game_name=GAME))
+                            component_type=Type.CLIENT, game_name=GAME, icon="opuc1"))
 
 CLASS = {"progression": ItemClassification.progression,
          "progression_skip_balancing": ItemClassification.progression_skip_balancing,
@@ -33,7 +38,9 @@ CLASS = {"progression": ItemClassification.progression,
 REGIONS = ["Menu", "Prologue Part 1", "Prologue Part 2", "Prologue Part 3", R.P1, R.SUNNY, R.IRON_SPOT,
            "Wooded Isle Mid-Boss", R.P2, R.P2R, "An Unclimbable Area", "An Incomplete Path", "Island Boss",
            R.POST_ENERU, R.SUNNY_CH3, R.G1, R.G2, R.G3, R.G4, R.GBRIDGE, R.GLADDER, R.GPOISON, R.GBOSS,
-           R.POST_MORIA, R.CENTRAL, R.I1, R.I2, R.I3, R.I4, R.I5, R.I6, R.ILADDER, R.IBOSS, R.POST_AOKIJI]
+           R.POST_MORIA, R.CENTRAL, R.I1, R.I2, R.I3, R.I4, R.I5, R.I6, R.ILADDER, R.IBOSS, R.POST_AOKIJI,
+           R.C1, R.C2, R.CPOISON, R.CWATER, R.CMID, R.CBOSS, R.CSECRET, R.POST_BLACKBEARD,
+           R.WHIDDEN, R.GHIDDEN, R.GSECRET, R.IOBST1, R.IOBST2]
 
 
 class OPUCItem(Item):
@@ -67,11 +74,16 @@ class OPUCWorld(World):
         "Shrine Access": {i.name for i in ITEMS if i.kind == "shrine"},
         "Map Fragments": {i.name for i in ITEMS if i.name.startswith("Map ")},
         "Traps": set(ACTIVE_TRAPS),
+        "Gabri Energy": set(GABRI_COLOUR_ITEMS) | {"Progressive Gabri Level"},
+        "Old Gold Coins": {i.name for i in ITEMS if i.kind == "filler" and i.data["item"] == OLD_GOLD_COIN},
     }
     location_name_groups = {
         "Fishing": {l.name for l in LOCATIONS if l.name.startswith("Fishing - ")},
         "Creatures": {l.name for l in LOCATIONS if l.name.startswith("Creatures - ")},
         "Co-op Moves": {l.name for l in LOCATIONS if l.name.startswith("Co-op - ")},
+        "Materials": {l.name for l in LOCATIONS if l.check[0] == "material"},
+        "Extra Recipes": {n for n in EXTRA_RECIPE_LOCATIONS.values() if " - Extra Recipe #" in n},
+        "Franky's Supplies": {n for n in EXTRA_RECIPE_LOCATIONS.values() if n.startswith("Franky's Supplies")},
     }
     origin_region_name = "Menu"
 
@@ -86,7 +98,7 @@ class OPUCWorld(World):
             o.goal.value = passthrough.get("goal", 0)
             o.rod_upgrade_items.value = passthrough.get("rod_upgrade_items", 30)
             o.combine_rod_and_line.value = passthrough.get("combine_rod_and_line", 0)
-            for key in ("super_move_locations",
+            for key in ("super_move_locations", "materialsanity", "gabri_energy_items", "gabri_level_items",
                         "fishsanity", "creaturesanity", "workshop_unlock", "kitchen_unlock", "pharmacy_unlock",
                         "usopp_required_for_art", "sanji_required_for_art", "chopper_required_for_art",
                         "nami_required_for_maps", "robin_required_for_monuments", "franky_required_for_build_sites",
@@ -94,9 +106,16 @@ class OPUCWorld(World):
                         "enemy_gunpowder_drop_logic", "enemy_gunpowder_drop_rate",
                         "bag_palette_upgrade_item_type", "cat_burglar_item_type", "light_weight_item_type",
                         "flower_power_item_type",
-                        "blue_orb_spot_gives_iron_ore"):
+                        "blue_orb_spot_gives_iron_ore", "starting_gabri_energy", "franky_supplies",
+                        "franky_supplies_unlock", "franky_required_for_art", "extra_crafting_recipes",
+                        "extra_final_door_requirement", "wherever_cannon_unlock"):
                 if key in passthrough:
                     getattr(o, key).value = passthrough[key]
+            if "starting_gabri_energy" not in passthrough:
+                o.starting_gabri_energy.value = 1          # 0.28.0 - 0.29.x seeds: 1 Blue bar
+            for key in ("franky_supplies", "extra_crafting_recipes"):
+                if key not in passthrough:
+                    getattr(o, key).value = 0              # seeds from before 0.30.0
             self.fish_locations = list(passthrough.get("fish_locations", []))
             self.creature_locations = list(passthrough.get("creature_locations", []))
         # Every island is in every seed (user, 2026-10-28). Only the region after the goal boss is left out
@@ -111,6 +130,12 @@ class OPUCWorld(World):
             self.fish_locations = pick(o.fishsanity.value != 0, R.FISH_IN_SCOPE, o.fish_locations.value)
             self.creature_locations = pick(o.creaturesanity.value != 0, R.CREATURES_IN_SCOPE,
                                            o.creature_locations.value)
+        if passthrough:
+            names = {gid: n for n, gid in POOL_ITEM_IDS.items()}
+            self.extra_recipes = {(room, row): [(names[gid], n) for gid, n in ing]
+                                  for room, row, ing in passthrough.get("extra_recipes", [])}
+        else:
+            self.extra_recipes = self.make_extra_recipes()
         self.catch_locations = {f"Fishing - {n}": n for n in self.fish_locations}
         self.catch_locations.update({f"Creatures - {n}": n for n in self.creature_locations})
         self.starting_character = o.starting_character.value
@@ -127,6 +152,31 @@ class OPUCWorld(World):
                 early[name] = 1
         if o.early_bag_upgrade.value:
             early["Progressive Item Bag Upgrade"] = o.early_bag_upgrade.value
+
+    def make_extra_recipes(self) -> Dict[Tuple[str, int], List[Tuple[str, int]]]:
+        """Random recipes (0.30.0) for the empty rows (Extra Crafting Recipes) and Franky's Archipelago Trades: 1-4
+        different ingredients (20 / 50 / 25 / 5%), each from the room's pool: a rarity first (Common 45% ...
+        Legendary 2%, among the rarities left), then an ingredient of that rarity, then its amount. Only ingredients
+        this seed can get (found, or crafted from such)."""
+        o = self.options
+        rooms = list(EXTRA_SLOTS.items()) if o.extra_crafting_recipes.value else []
+        if o.franky_supplies.value:
+            rooms.append(("franky", FRANKY_AP_ROWS))
+        out: Dict[Tuple[str, int], List[Tuple[str, int]]] = {}
+        counts, count_w = list(INGREDIENT_COUNT_WEIGHTS), list(INGREDIENT_COUNT_WEIGHTS.values())
+        for room, rows in rooms:
+            pool = [x for x in EXTRA_POOLS[room] if R.material_in_scope(x[0], self.scope_regions)]
+            for row in rows:
+                left = list(pool)
+                picked: List[Tuple[str, int]] = []
+                for _ in range(min(self.random.choices(counts, count_w)[0], len(left))):
+                    tiers = sorted({r for _n, r, _a in left}, key=list(RARITY_WEIGHTS).index)
+                    tier = self.random.choices(tiers, [RARITY_WEIGHTS[t] for t in tiers])[0]
+                    entry = self.random.choice([x for x in left if x[1] == tier])
+                    left.remove(entry)
+                    picked.append((entry[0], self.random.choice(amount_choices(entry[2]))))
+                out[(room, row)] = picked
+        return out
 
     # ---------------------------------------------------------------------------------- items
     # items whose class follows an option (useful, or progression that skips balancing)
@@ -154,6 +204,8 @@ class OPUCWorld(World):
         singles = {gid: w for n, gid, w in FILLER_ITEMS if n not in FILLER_COUNTS}
         for n, gid, w in FILLER_ITEMS:
             count = FILLER_COUNTS.get(n, 1)
+            if gid == OLD_GOLD_COIN and not o.franky_supplies.value:
+                continue                    # Old Gold Coins are only filler with Franky's Supplies
             if n.split(" of ", 1)[-1] in SHRINE_OFFERING_FILLER:
                 continue                    # a shrine asks for it
             if count > 1 and not o.include_bundle_filler.value:
@@ -193,8 +245,21 @@ class OPUCWorld(World):
                 count = 0                   # Rod Level items raise the line as well
             if d.kind == "room" and getattr(self.options, ROOM_OPTIONS[d.data][0]).value in (0, 2, 4):
                 count = 0                   # this room isn't opened by its own item
+            if d.data == "franky" and not self.options.franky_supplies.value:
+                count = 0                   # no Franky's Supplies in this seed
             if d.name == "The Final Door" and self.options.goal.value != 2:
                 count = 0                   # the Doom Guardian is only fought with his goal
+            cannon = self.options.wherever_cannon_unlock.value
+            if (d.name == "Thousand Sunny Build Site 1 Access" and cannon) or (d.kind == "cannon" and cannon != 1):
+                count = 0                   # Wherever Cannon Unlock: its build site, or the cannon itself
+            if d.kind == "cannon" and cannon == 2:
+                self.multiworld.push_precollected(self.create_item(d.name))
+            per_colour = bool(self.options.gabri_energy_items.value)
+            if (d.kind == "gabri" and per_colour) or (d.kind == "gabri_colour" and not per_colour):
+                count = 0                   # Gabri Energy Items: levels or one item per colour bar
+            elif d.kind == "gabri_colour":
+                count = gabri_colour_copies(d.data, self.options.gabri_level_items.value,
+                                            self.options.starting_gabri_energy.value)
             for _ in range(count):
                 if d.name != start:
                     pool.append(self.create_item(d.name))
@@ -236,18 +301,20 @@ class OPUCWorld(World):
         connect(R.P1, R.SUNNY)
         if self.options.blue_orb_spot_gives_iron_ore.value:
             connect(R.P1, R.IRON_SPOT, lambda s, p: s.has("Brook", p))
-        connect(R.P1, "Wooded Isle Mid-Boss", lambda s, p: s.has("Wooded Isle Shrine 2 Access", p))
+        # Shrine 2 (200 Blue): free at Gabri level 0, but with per-colour Energy (Blue starts at 1) it needs Blue
+        connect(R.P1, "Wooded Isle Mid-Boss", lambda s, p: s.has("Wooded Isle Shrine 2 Access", p) and R.energy(100)(s, p))
         connect("Wooded Isle Mid-Boss", R.P2)
         connect(R.P2, "Island Boss", lambda s, p: s.has("Wooded Isle Shrine 3 Access", p)
-                and R.gabri(1)(s, p) and R.net(s, p))
+                and R.energy(101)(s, p) and R.net(s, p))
         connect(R.P2, "An Unclimbable Area", lambda s, p: s.has("Pickaxe", p) and R.build_site(1)(s, p)
-                and R.gabri(2)(s, p))
+                and R.energy(111)(s, p))
         connect(R.P2, R.P2R, R.rock_path)         # rock path: Pickaxe or Gunpowder (0.24.0)
         connect(R.P2R, "An Incomplete Path", lambda s, p: R.build_site(2)(s, p)
-                and R.gabri(6)(s, p))
+                and R.energy(112)(s, p))
         # The region after each island boss also opens the Sunny's chapter-3 rooms (chapter = latest boss beaten);
         # the goal boss has no "after" region.
-        for boss, post in (("Island Boss", R.POST_ENERU), (R.GBOSS, R.POST_MORIA), (R.IBOSS, R.POST_AOKIJI)):
+        for boss, post in (("Island Boss", R.POST_ENERU), (R.GBOSS, R.POST_MORIA), (R.IBOSS, R.POST_AOKIJI),
+                           (R.CBOSS, R.POST_BLACKBEARD)):
             if post != self.post_goal:
                 connect(boss, post)
                 connect(post, R.SUNNY_CH3)
@@ -287,17 +354,43 @@ class OPUCWorld(World):
         for e in [x for r in (R.I1, R.I2, R.I3, R.I4, R.I5) for x in regions[r].exits]:
             for reg in regions.values():
                 self.multiworld.register_indirect_condition(reg, e)
+        # Cave Isle (user's notes 2026-11-06). Part 2 past a rock: the Pickaxe or Gunpowder (user, 0.27.0).
+        connect(R.SUNNY, R.C1, lambda s, p: s.has(R.CAVE_LOG_POSE, p))
+        connect(R.C1, R.C2, R.rock_path)
+        connect(R.C2, R.CPOISON, R.power_vacuum)
+        connect(R.C2, R.CWATER, lambda s, p: s.has("Brook", p))
+        connect(R.C2, R.CMID, self.cave_shrine_1)
+        connect(R.C2, R.CBOSS, self.cave_shrine_2)
+        connect(R.C2, R.CSECRET, self.cave_site_1)
+        # Obstructed Paths on every island: Mole + 50 Bombs build sites (0.27.0)
+        connect(R.P1, R.WHIDDEN, lambda s, p: self.wooded_site_3(s, p) or self.wooded_site_4(s, p))
+        connect(R.G1, R.GHIDDEN, self.gorge_site_5)
+        connect(R.GPOISON, R.GSECRET, self.gorge_site_6)
+        connect(R.I2, R.IOBST1, self.iceberg_site_3)
+        connect(R.ILADDER, R.IOBST2, self.iceberg_site_4)
+        for e in [x for r in (R.P1, R.G1, R.GPOISON, R.I2, R.ILADDER, R.C1, R.C2) for x in regions[r].exits]:
+            for reg in regions.values():
+                self.multiworld.register_indirect_condition(reg, e)
         # The final island: its island item, then the Final Door (500: 1000 of five Energy colours = Gabri 13)
         connect(R.SUNNY, R.CENTRAL, lambda s, p: s.has(R.CENTRAL_LOG_POSE, p))
         goal_name, _flag, goal_region = GOALS[self.options.goal.value]
         for loc in LOCATIONS:
             if loc.region not in self.scope_regions or loc.name == goal_name:
                 continue                    # after the goal, or the goal itself (an event below)
+            if loc.check == ("shrine", 1010) and self.options.wherever_cannon_unlock.value:
+                continue                    # the Wherever Cannon is an item, no build site
             if loc.name in SUPER_LOCATION_NAMES and not self.options.super_move_locations.value:
                 continue                    # Super Move Locations: off
             if loc.check[0] == "catch" and loc.name not in self.catch_locations:
                 continue                    # fishing / creature location not picked for this seed
-            if loc.check[0] == "craft" and not self.craft_has_location(loc.check[1], loc.check[2]):
+            if loc.check[0] == "material" and not (self.options.materialsanity.value
+                                                   and R.material_in_scope(loc.name[4:], self.scope_regions)):
+                continue                    # Materialsanity off (or the material isn't in this seed)
+            if loc.check[0] == "craft" and loc.check[1:] in EXTRA_RECIPE_LOCATIONS:
+                if not (loc.check[1:] in self.extra_recipes or (loc.check[1] == "franky" and loc.check[2] in
+                                                                FRANKY_TRADES and self.options.franky_supplies.value)):
+                    continue                # random recipe / Franky's trade not in this seed
+            elif loc.check[0] == "craft" and not self.craft_has_location(loc.check[1], loc.check[2]):
                 continue                    # room opens after the goal, or an ingredient isn't on Island 1
             regions[loc.region].locations.append(OPUCLocation(p, loc.name, LOCATION_IDS[loc.name], regions[loc.region]))
 
@@ -308,48 +401,94 @@ class OPUCWorld(World):
     # Gorge Isle shrines / build sites: access item, Gabri level, offered items (event/epoint/zone2.bin)
     @staticmethod
     def gorge_shrine_1(s, p) -> bool:   # The Silent Ancient Creature: 3 Mysterious Bone, 1 Healing Capsule
-        return (s.has("Gorge Isle Shrine 1 Access", p) and R.gabri(1)(s, p)
+        return (s.has("Gorge Isle Shrine 1 Access", p) and R.energy(200)(s, p)
                 and R.has_material("Mysterious Bone")(s, p) and R.has_material("Healing Capsule")(s, p))
 
     @staticmethod
     def gorge_shrine_2(s, p) -> bool:   # The Ruins in the Sunset: 30 Gunpowder, 3 Clay
-        return (s.has("Gorge Isle Shrine 2 Access", p) and R.gabri(3)(s, p)
+        return (s.has("Gorge Isle Shrine 2 Access", p) and R.energy(201)(s, p)
                 and R.has_material("Gunpowder")(s, p) and R.has_material("Clay")(s, p))
 
     @staticmethod
     def gorge_site_1(s, p) -> bool:     # An Incomplete Path: 2 Marble
-        return R.build_site(1, "Gorge Isle")(s, p) and R.gabri(3)(s, p) and R.has_material("Marble")(s, p)
+        return R.build_site(1, "Gorge Isle")(s, p) and R.energy(211)(s, p) and R.has_material("Marble")(s, p)
 
     @staticmethod
     def gorge_site_2(s, p) -> bool:     # An Incomplete Path (2): 3 Marble
-        return R.build_site(2, "Gorge Isle")(s, p) and R.gabri(3)(s, p) and R.has_material("Marble")(s, p)
+        return R.build_site(2, "Gorge Isle")(s, p) and R.energy(212)(s, p) and R.has_material("Marble")(s, p)
 
     @staticmethod
     def gorge_site_3(s, p) -> bool:     # An Unclimbable Path: 5 Bamboo
-        return R.build_site(3, "Gorge Isle")(s, p) and R.gabri(5)(s, p) and R.has_material("Bamboo")(s, p)
+        return R.build_site(3, "Gorge Isle")(s, p) and R.energy(213)(s, p) and R.has_material("Bamboo")(s, p)
 
     @staticmethod
     def gorge_site_4(s, p) -> bool:     # An Incomplete Path (3): 5 Marble
-        return R.build_site(4, "Gorge Isle")(s, p) and R.gabri(2)(s, p) and R.has_material("Marble")(s, p)
+        return R.build_site(4, "Gorge Isle")(s, p) and R.energy(214)(s, p) and R.has_material("Marble")(s, p)
 
     # Iceberg Isle shrines / build sites (event/epoint/zone3.bin)
     @staticmethod
     def iceberg_shrine_1(s, p) -> bool:   # The Cliff of Ice: 1 Anti-Cold Cream, 1 Stamina Tonic (Gabri 4)
-        return (s.has("Iceberg Isle Shrine 1 Access", p) and R.gabri(4)(s, p)
+        return (s.has("Iceberg Isle Shrine 1 Access", p) and R.energy(300)(s, p)
                 and R.has_material("Anti-Cold Cream")(s, p) and R.has_material("Stamina Tonic")(s, p))
 
     @staticmethod
     def iceberg_shrine_2(s, p) -> bool:   # The Hall of Blizzards: 1 Ice Beetle, 15 Ice Shard (Gabri 5)
-        return (s.has("Iceberg Isle Shrine 2 Access", p) and R.gabri(5)(s, p)
+        return (s.has("Iceberg Isle Shrine 2 Access", p) and R.energy(301)(s, p)
                 and R.has_material("Ice Beetle")(s, p) and R.has_material("Ice Shard")(s, p))
 
     @staticmethod
     def iceberg_site_1(s, p) -> bool:     # An Unclimbable Path: 5 Bamboo (Gabri 2)
-        return R.build_site(1, "Iceberg Isle")(s, p) and R.gabri(2)(s, p) and R.has_material("Bamboo")(s, p)
+        return R.build_site(1, "Iceberg Isle")(s, p) and R.energy(311)(s, p) and R.has_material("Bamboo")(s, p)
 
     @staticmethod
     def iceberg_site_2(s, p) -> bool:     # An Unclimbable Path (2): 5 Bamboo (Gabri 5)
-        return R.build_site(2, "Iceberg Isle")(s, p) and R.gabri(5)(s, p) and R.has_material("Bamboo")(s, p)
+        return R.build_site(2, "Iceberg Isle")(s, p) and R.energy(312)(s, p) and R.has_material("Bamboo")(s, p)
+
+    # Cave Isle shrines / build sites (event/epoint/zone4.bin); Gabri levels from the costs (rules.gabri_level)
+    @staticmethod
+    def cave_shrine_1(s, p) -> bool:      # The Burning Cavity: 50 Bombs, 1 Fire Hercules (800 R, 400 G, 300 B, 500 W)
+        return (s.has("Cave Isle Shrine 1 Access", p) and R.energy(400)(s, p)
+                and R.ingredient("Bombs")(s, p) and R.has_material("Fire Hercules")(s, p))   # craftable Bombs
+
+    @staticmethod
+    def cave_shrine_2(s, p) -> bool:      # The Abyss: 1 Mock Cherry Pie, 3 Dual-Action Tonic, 3 Volcanic Rock
+        return (s.has("Cave Isle Shrine 2 Access", p) and R.energy(401)(s, p)
+                and R.has_material("Mock Cherry Pie")(s, p) and R.has_material("Dual-Action Tonic")(s, p)
+                and R.has_material("Volcanic Rock")(s, p))
+
+    @staticmethod
+    def cave_site_1(s, p) -> bool:        # An Obstructed Path: Mole, 50 Bombs (500 G, 500 W, 800 Gold)
+        return R.obstructed(R.build_site(1, "Cave Isle"), 411)(s, p)
+
+    @staticmethod
+    def cave_site_2(s, p) -> bool:        # An Incomplete Path: 5 Marble (300 R, 300 G, 100 Gold)
+        return (R.build_site(2, "Cave Isle")(s, p) and R.energy(412)(s, p)
+                and R.has_material("Marble")(s, p))
+
+    # Obstructed Paths on the other islands (1 Mole, 50 Bombs each)
+    @staticmethod
+    def wooded_site_3(s, p) -> bool:      # 300 Red, 300 Gold
+        return R.obstructed(R.build_site(3), 113)(s, p)
+
+    @staticmethod
+    def wooded_site_4(s, p) -> bool:      # 300 Red, 300 Gold
+        return R.obstructed(R.build_site(4), 114)(s, p)
+
+    @staticmethod
+    def gorge_site_5(s, p) -> bool:       # 200 Blue, 200 Gold
+        return R.obstructed(R.build_site(5, "Gorge Isle"), 215)(s, p)
+
+    @staticmethod
+    def gorge_site_6(s, p) -> bool:       # 500 Red, 500 Black, 900 Gold
+        return R.obstructed(R.build_site(6, "Gorge Isle"), 216)(s, p)
+
+    @staticmethod
+    def iceberg_site_3(s, p) -> bool:     # 200 Blue, 200 Gold
+        return R.obstructed(R.build_site(3, "Iceberg Isle"), 313)(s, p)
+
+    @staticmethod
+    def iceberg_site_4(s, p) -> bool:     # 200 Blue, 700 Gold
+        return R.obstructed(R.build_site(4, "Iceberg Isle"), 314)(s, p)
 
     def room_has_locations(self, room: str) -> bool:
         """Every room can open before any goal (vanilla Kitchen / Pharmacy: after any non-goal island boss)."""
@@ -388,21 +527,22 @@ class OPUCWorld(World):
 
         rule("Wooded Isle Shrine - An Odd Stone & A Strange Creature", self.prologue_exit)
         rule("Prologue Part 3 Completed", self.prologue_exit)
-        rule("Wooded Isle Monument - Far, Far Away", lambda s, p: R.rock_path(s, p) and R.monument(s, p))
-        rule("Wooded Isle Monument - Eternity", R.monument)
+        rule('Wooded Isle Monument - "Far, Far Away"', lambda s, p: R.rock_path(s, p) and R.monument(s, p))
+        rule('Wooded Isle Monument - "Eternity"', R.monument)
         rule("Wooded Isle - Nectar Chest", R.rock_path)                 # rock path: Pickaxe or Gunpowder
         rule("Wooded Isle - Restorative Drug Chest", R.rock_path)
         rule("Wooded Isle - Steel Chain Chest", lambda s, p: s.has("Pickaxe", p) and
              R.map_fragment(("Map 8, Fragment 1", "Map 8, Fragment 2", "Map 8, Fragment 3"))(s, p))
         rule("Wooded Isle - Flour Chest", lambda s, p: s.has("Pickaxe", p) and
              R.map_fragment(("Map 2, Fragment 1", "Map 2, Fragment 2", "Map 2, Fragment 3", "Map 2, Fragment 4"))(s, p))
-        rule("Wooded Isle Shrine - An Enormous Boulder", lambda s, p: s.has("Wooded Isle Shrine 2 Access", p))
+        rule("Wooded Isle Shrine - An Enormous Boulder",
+             lambda s, p: s.has("Wooded Isle Shrine 2 Access", p) and R.energy(100)(s, p))
         rule("Wooded Isle Shrine - What Lies Asleep in the Amber",
-             lambda s, p: s.has("Wooded Isle Shrine 3 Access", p) and R.gabri(1)(s, p) and R.net(s, p))
+             lambda s, p: s.has("Wooded Isle Shrine 3 Access", p) and R.energy(101)(s, p) and R.net(s, p))
         rule("Wooded Isle Build Site - An Unclimbable Area",
-             lambda s, p: s.has("Pickaxe", p) and R.build_site(1)(s, p) and R.gabri(2)(s, p))
+             lambda s, p: s.has("Pickaxe", p) and R.build_site(1)(s, p) and R.energy(111)(s, p))
         rule("Wooded Isle Build Site - An Incomplete Path",
-             lambda s, p: R.build_site(2)(s, p) and R.gabri(6)(s, p))
+             lambda s, p: R.build_site(2)(s, p) and R.energy(112)(s, p))
 
         rule("Gorge Isle Shrine - The Silent Ancient Creature", self.gorge_shrine_1)
         rule("Gorge Isle Shrine - The Ruins in the Sunset", self.gorge_shrine_2)
@@ -410,11 +550,12 @@ class OPUCWorld(World):
         rule("Gorge Isle Build Site - An Incomplete Path (2)", self.gorge_site_2)
         rule("Gorge Isle Build Site - An Unclimbable Path", self.gorge_site_3)
         rule("Gorge Isle Build Site - An Incomplete Path (3)", self.gorge_site_4)
-        rule("Gorge Isle Monument - Creation", R.monument)
+        rule('Gorge Isle Monument - "Creation"', R.monument)
         # The Wherever Cannon: 300 Red (Gabri 3), 7 Iron Scrap, 10 Gunpowder
-        rule("Thousand Sunny - Wherever Cannon", lambda s, p: R.build_site(1, "Thousand Sunny")(s, p)
-             and R.gabri(3)(s, p) and R.has_material("Iron Scrap")(s, p) and R.has_material("Gunpowder")(s, p))
-        rule("Gorge Isle Monument - Hope", R.monument)
+        if not o.wherever_cannon_unlock.value:
+            rule("Thousand Sunny - Wherever Cannon", lambda s, p: R.build_site(1, "Thousand Sunny")(s, p)
+                 and R.energy(1010)(s, p) and R.has_material("Iron Scrap")(s, p) and R.has_material("Gunpowder")(s, p))
+        rule('Gorge Isle Monument - "Hope"', R.monument)
         # treasure map chests are dug up (Pickaxe, as on Wooded Isle)
         for chest, m, n in (("Golden Fruit", 4, 5), ("Mask Fragment", 6, 3), ("Enhanced Reel", 1, 4)):
             frags = tuple(f"Map {m}, Fragment {k + 1}" for k in range(n))
@@ -427,6 +568,18 @@ class OPUCWorld(World):
             # room open, Art level (+ its owner with that option), key items, ingredients found or crafted
             name = f"{ROOM_LOCATION_PREFIX[room]} {result}"
             rule(name, R.craftable(room, row))
+
+        # 0.30.0: random recipes (Extra Crafting Recipes, Franky's Archipelago Trades) and Franky's fixed trades
+        for (room, row), ing in self.extra_recipes.items():
+            rule(EXTRA_RECIPE_LOCATIONS[(room, row)], R.recipe(room, row, [n for n, _c in ing]))
+        if o.franky_supplies.value:
+            for row in FRANKY_TRADES:
+                rule(EXTRA_RECIPE_LOCATIONS[("franky", row)], R.franky_trade(row))
+
+        if o.materialsanity.value:
+            for loc in LOCATIONS:
+                if loc.check[0] == "material" and R.material_in_scope(loc.name[4:], self.scope_regions):
+                    rule(loc.name, R.got_material(loc.name[4:]))
 
         for name, thing in self.catch_locations.items():
             rule(name, R.has_material(thing))
@@ -441,10 +594,34 @@ class OPUCWorld(World):
         rule("Iceberg Isle Build Site - An Unclimbable Path (2)", self.iceberg_site_2)
         rule("Iceberg Isle - Vision Dial Chest", lambda s, p: s.has("Pickaxe", p) and
              R.map_fragment(("Map 3, Fragment 1", "Map 3, Fragment 2", "Map 3, Fragment 3"))(s, p))
-        rule("Central Isle Monument - Inferno", R.monument)
+        rule('Central Isle Monument - "Inferno"', R.monument)
+
+        # Cave Isle (0.27.0)
+        rule("Cave Isle Shrine - The Burning Cavity", self.cave_shrine_1)
+        rule("Cave Isle Shrine - The Abyss", self.cave_shrine_2)
+        rule("Cave Isle Build Site - An Obstructed Path", self.cave_site_1)
+        rule("Cave Isle Build Site - An Incomplete Path", self.cave_site_2)
+        for name in ('Cave Isle Monument - "Drifting Away"', 'Cave Isle Monument - "A Certain Island"',
+                     'Wooded Isle Monument - "Seal"', 'Iceberg Isle Monument - "Reward"',
+                     'Iceberg Isle Monument - "Orbs"'):
+            rule(name, R.monument)
+        # treasure map chests are dug up: Pickaxe + the map's fragments
+        for loc, m, n in (("Cave Isle - Tone Dial Chest", 7, 3), ("Cave Isle - Pure Iron Ore Chest", 5, 3),
+                          ("Iceberg Isle - Revival Elixir Chest", 9, 3), ("Wooded Isle - Ultimate Reel Chest", 10, 5)):
+            frags = tuple(f"Map {m}, Fragment {k + 1}" for k in range(n))
+            rule(loc, lambda s, p, frags=frags: s.has("Pickaxe", p) and R.map_fragment(frags)(s, p))
+        # the other islands' Obstructed Path build sites
+        rule("Wooded Isle Build Site - An Obstructed Path", self.wooded_site_3)
+        rule("Wooded Isle Build Site - An Obstructed Path (2)", self.wooded_site_4)
+        rule("Gorge Isle Build Site - An Obstructed Path", self.gorge_site_5)
+        rule("Gorge Isle Build Site - An Obstructed Path (2)", self.gorge_site_6)
+        rule("Iceberg Isle Build Site - An Obstructed Path", self.iceberg_site_3)
+        rule("Iceberg Isle Build Site - An Obstructed Path (2)", self.iceberg_site_4)
         if self.options.goal.value == 2:
             # final boss: the Final Door needs 1000 of five Energy colours (only reachable at Gabri level 13)
-            rule(GOALS[2][0], lambda s, p: s.has("The Final Door", p) and R.gabri(13)(s, p))
+            bosses = [mw.get_location(n, p) for n in final_door_bosses(o.extra_final_door_requirement.value)]
+            rule(GOALS[2][0], lambda s, p: s.has("The Final Door", p) and R.energy(500)(s, p)
+                 and all(b.can_reach(s) for b in bosses))
         mw.completion_condition[p] = lambda s: s.has("Victory", p)
 
     @staticmethod
@@ -456,10 +633,12 @@ class OPUCWorld(World):
         return {
             "starting_character": self.starting_character,
             "goal": self.options.goal.value,
+            "extra_final_door_requirement": (self.options.extra_final_door_requirement.value
+                                             if self.options.goal.value == 2 else 0),
             "death_link": self.options.death_link.value,
             "falling_death_link": self.options.falling_death_link.value,
             # islands that open with their island item (0.21.0: all of them; older seeds: by goal)
-            "islands": [2, 3, 5],
+            "islands": [2, 3, 4, 5],
             "rod_upgrade_items": self.options.rod_upgrade_items.value,
             "combine_rod_and_line": self.options.combine_rod_and_line.value,
             "move_exp_multiplier": self.options.move_exp_multiplier.value,
@@ -483,10 +662,16 @@ class OPUCWorld(World):
             "better_random_dig_item_rates": self.options.better_random_dig_item_rates.value,
             "higher_random_dig_chance": self.options.better_random_dig_item_rates.value,   # older clients
             "better_plant_drop_rates": self.options.better_plant_drop_rates.value,
+            "expanded_storage": self.options.expanded_storage.value,
+            "wherever_cannon_unlock": self.options.wherever_cannon_unlock.value,
             "include_gunpowder_logic": self.options.include_gunpowder_logic.value,
             "enemy_gunpowder_drop_logic": self.options.enemy_gunpowder_drop_logic.value,
             "enemy_gunpowder_drop_rate": self.options.enemy_gunpowder_drop_rate.value,
             "stack_craftables_make_max_copies": self.options.stack_craftables_make_max_copies.value,
+            "materialsanity": self.options.materialsanity.value,
+            "gabri_energy_items": self.options.gabri_energy_items.value,
+            "gabri_level_items": self.options.gabri_level_items.value,
+            "energy_link": self.options.energy_link.value,
             # Starting Costumes: per Straw Hat (Luffy..Brook) [costume, style] for the client
             "starting_costumes": [list(COSTUME_CHOICES[i][1][getattr(self.options, f"{w.lower()}_starting_costume")
                                                             .value][2:4]) for i, (w, _c) in enumerate(COSTUME_CHOICES)],
@@ -509,4 +694,14 @@ class OPUCWorld(World):
             "usopp_required_for_art": self.options.usopp_required_for_art.value,
             "sanji_required_for_art": self.options.sanji_required_for_art.value,
             "chopper_required_for_art": self.options.chopper_required_for_art.value,
+            # 0.30.0
+            "starting_gabri_energy": self.options.starting_gabri_energy.value,
+            "franky_supplies": self.options.franky_supplies.value,
+            "franky_supplies_unlock": self.options.franky_supplies_unlock.value,
+            "franky_required_for_art": self.options.franky_required_for_art.value,
+            "extra_crafting_recipes": self.options.extra_crafting_recipes.value,
+            "easier_fish": self.options.easier_fish.value,
+            # random recipes: [room, row, [[game item id, count], ...]]
+            "extra_recipes": [[room, row, [[POOL_ITEM_IDS[n], c] for n, c in ing]]
+                              for (room, row), ing in sorted(self.extra_recipes.items())],
         }

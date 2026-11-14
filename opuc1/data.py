@@ -2,8 +2,8 @@
 One Piece Unlimited Cruise Part 1 (ROUPAF) - shared game data for the world and the client.
 No Archipelago imports here, so the client and tests can load it directly.
 
-Scope: Prologue, Thousand Sunny, Wooded Isle (Island 1), Gorge Isle (Island 2), Iceberg Isle (Island 3) and
-Central Isle (final island). Every island is in every seed; the goal option only picks the boss that ends it.
+Scope: Prologue, Thousand Sunny, Wooded Isle (Island 1), Gorge Isle (Island 2), Iceberg Isle (Island 3), Cave Isle
+(Island 4) and Central Isle (final island). Every island is in every seed; the goal option only picks the boss that ends it.
 """
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
@@ -195,15 +195,16 @@ _ABILITIES = [
     ("Luffy", "Gum Gum Body", "Gum Gum Power"), ("Zoro", "Master Swordsman", "Secrets of the Blade"),
     ("Usopp", "Battle Strategy", "Art of Development"), ("Sanji", "Black Leg", "Art of Cooking"),
     ("Nami", "Cat Burglar", "Weather Forecast"), ("Chopper", "First Aid", "Art of Compounding"),
-    ("Robin", "Flower Flower Power", "Overwhelm"), ("Franky", "Iron Man", "Supply"),
+    ("Robin", "Flower Flower Power", "Overwhelm"), ("Franky", "Iron Man", "Art of Supplying"),
     ("Brook", "Light Weight", "Speed Sword"),
 ]
+# (Franky's Supply is "Art of Supplying" since 0.30.0, same item id: its levels open Franky's Supplies recipes)
 ART_ITEMS = {"Usopp - Progressive Art of Development", "Sanji - Progressive Art of Cooking",
-             "Chopper - Progressive Art of Compounding"}
+             "Chopper - Progressive Art of Compounding", "Franky - Progressive Art of Supplying"}
 for _ci, (_c, _a0, _a1) in enumerate(_ABILITIES):
     for _slot, _a in ((0, _a0), (1, _a1)):
         _n = f"{_c} - Progressive {_a}"
-        _add(_n, PROG if _n in ART_ITEMS or _n == "Franky - Progressive Supply" else USEFUL, 3, "ability", (_ci, _slot))
+        _add(_n, PROG if _n in ART_ITEMS else USEFUL, 3, "ability", (_ci, _slot))
     _add(f"{_c} - Progressive Determination", USEFUL, 5, "ability", (_ci, 2))
 
 # Co-op moves: data = co-op requirement record index the client opens (opuc-coop-moves.md).
@@ -360,6 +361,84 @@ for _n, _sid in TRAP_ITEMS.items():
 RETIRED_TRAPS = {"Heat Trap"}
 ACTIVE_TRAPS = [n for n in TRAP_ITEMS if n not in RETIRED_TRAPS]
 
+# ---- Island 4 update (0.27.0): Cave Isle (docs/island4_scope.md, user's notes 2026-11-06). Added last so earlier
+# item ids stay. Moles (Cave Isle Part 2, Bug-Catcher Net) also put every island's Obstructed Paths in logic.
+CAVE_LOG_POSE = "Cave Isle, The Underwater Passage"
+_add(CAVE_LOG_POSE, PROG, 1, "island", 4)
+CAVE_SHRINE_ACCESS = {
+    "Cave Isle Shrine 1 Access": 400, "Cave Isle Shrine 2 Access": 401,
+    "Cave Isle Build Site 1 Access": 411, "Cave Isle Build Site 2 Access": 412,
+}
+for _n, _sid in CAVE_SHRINE_ACCESS.items():
+    _add(_n, PROG if _sid in (400, 401, 411) else PROG_SKIP, 1, "shrine", _sid)
+SHRINE_ACCESS.update(CAVE_SHRINE_ACCESS)
+# Treasure maps whose dig spots are now in logic: Map 5 (Cave Isle Pure Iron Ore chest 14703), Map 7 (Tone Dial
+# chest 14701), Map 9 (Iceberg Isle Revival Elixir chest 13702), Map 10 (Wooded Isle Ultimate Reel chest 11703).
+for _m, _first, _n in ((5, 206, 3), (7, 212, 3), (9, 218, 3), (10, 221, 5)):
+    for _k in range(_n):
+        _add(f"Map {_m}, Fragment {_k + 1}", PROG_SKIP, 1, "key", {"item": _first + _k})
+# ---- 0.28.0: Gabri Energy colours as items (option gabri_energy_items: per_colour). Order = the game's Energy slots
+# (Red, Green, Blue, White, Black, Gold). Per colour, Gabri starts with 1 Blue bar (enough for the Prologue shrine;
+# user) and nothing else. Copies: gabri_level_items 10 -> one bar each (Blue 9), 5 -> two bars each (Blue 5, the last
+# one only fills it to 10).
+GABRI_COLOURS = ["Red", "Green", "Blue", "White", "Black", "Gold"]
+GABRI_START_BARS = [0, 0, 1, 0, 0, 0]
+GABRI_COLOUR_ITEMS = [f"Progressive Gabri Level ({_c})" for _c in GABRI_COLOURS]
+for _ci, _n in enumerate(GABRI_COLOUR_ITEMS):
+    _add(_n, PROG, 10 - GABRI_START_BARS[_ci], "gabri_colour", _ci)
+
+
+# Starting Gabri Energy (0.30.0): 0 vanilla (3 Blue bars), 1 one_blue_energy (1 Blue: 0.28.0 - 0.29.x seeds, which
+# have no such slot data key), 2 all_energy (1 bar of every colour)
+GABRI_START_MODES = {0: [0, 0, 3, 0, 0, 0], 1: [0, 0, 1, 0, 0, 0], 2: [1, 1, 1, 1, 1, 1]}
+
+
+def gabri_start_bars(start_mode: int = 1) -> List[int]:
+    return GABRI_START_MODES.get(start_mode, GABRI_START_MODES[1])
+
+
+def gabri_bars_per_item(items_mode: int) -> int:
+    """gabri_level_items: 10 / 15 -> one bar per item, 5 -> two."""
+    return 2 if items_mode == 5 else 1
+
+
+def gabri_max_bars(items_mode: int) -> int:
+    """Bars a colour goes up to: 10, or 15 with gabri_level_items 15 (0.31.0)."""
+    return 15 if items_mode == 15 else 10
+
+
+def gabri_colour_copies(colour: int, items_mode: int, start_mode: int = 1) -> int:
+    """Copies of a colour's item; the starting bars count, so every colour ends at its cap."""
+    return -(-(gabri_max_bars(items_mode) - gabri_start_bars(start_mode)[colour]) // gabri_bars_per_item(items_mode))
+
+
+def gabri_colour_bars(colour: int, copies: int, items_mode: int, start_mode: int = 1) -> int:
+    return min(gabri_max_bars(items_mode),
+               gabri_start_bars(start_mode)[colour] + copies * gabri_bars_per_item(items_mode))
+
+
+# ---- 0.30.0: Franky's Supplies (option franky_supplies): the unused dev2 recipe set as Franky's own menu, opened by
+# its item (option franky_supplies_unlock). Old Gold Coins (game item 79) as filler: 2+ are bundles.
+_add("Franky's Supplies", PROG, 1, "room", "franky")
+# 0.31.0 (user): like the other filler, a single and Small (x3) / Large (x5) packages. (0.30.x had 1-5 coins; the
+# 4 / 5 coin ids were the last items and are gone, the 2 / 3 coin ids are the packages now.)
+COIN_FILLER = [("Old Gold Coin", 1, 3.0), ("Small Package of Old Gold Coins", 3, 1.5),
+               ("Large Package of Old Gold Coins", 5, 0.75)]
+OLD_GOLD_COIN = 79
+for _n, _c, _w in COIN_FILLER:
+    _add(_n, FILLER, 0, "filler", {"item": OLD_GOLD_COIN, "count": _c})
+    FILLER_ITEMS.append((_n, OLD_GOLD_COIN, _w))
+    if _c > 1:
+        FILLER_COUNTS[_n] = _c
+# 0.34.0 (user): option wherever_cannon_unlock own_item / start_with - the finished Wherever Cannon as an item instead
+# of the Sunny's build site (shrine 1010) and its access item; the client runs the build-finished event 10010.
+_add("The Wherever Cannon", PROG_SKIP, 1, "cannon")
+BUILD_SITE_IDS = {sid for sid in SHRINE_ACCESS.values() if sid % 100 >= 10}
+MAP_FRAGMENT_GROUPS = {}
+for _i in ITEMS:
+    if _i.name.startswith("Map ") and ", Fragment " in _i.name:
+        MAP_FRAGMENT_GROUPS.setdefault(_i.name.split(",")[0], []).append(_i.name)
+
 ITEM_TABLE: Dict[str, ItemDef] = {i.name: i for i in ITEMS}
 ITEM_IDS: Dict[str, int] = {i.name: BASE_ID + n for n, i in enumerate(ITEMS)}
 
@@ -402,33 +481,46 @@ _loc("Wooded Isle Shrine - An Odd Stone & A Strange Creature", "Prologue Part 3"
 _loc("First Step on the Thousand Sunny", "Wooded Isle Part 1", ("flag", 11990))
 _loc("Thousand Sunny - Broken Bug-Catcher Net Chest", "Thousand Sunny", ("chest", 10851))
 _loc("Thousand Sunny - Vacuum Cleaner Chest", "Thousand Sunny", ("chest", 10859))
-_loc("Wooded Isle Monument - Far, Far Away", "Wooded Isle Part 1", ("flag", 11652))
+_loc('Wooded Isle Monument - "Far, Far Away"', "Wooded Isle Part 1", ("flag", 11652))
 _loc("Wooded Isle - Nectar Chest", "Wooded Isle Part 1", ("chest", 11700))
 _loc("Wooded Isle - Restorative Drug Chest", "Wooded Isle Part 1", ("chest", 11704))
 _loc("Wooded Isle - Steel Chain Chest", "Wooded Isle Part 1", ("chest", 11701))
-_loc("Wooded Isle - Crystal Chest", "Wooded Isle Part 1", ("chest", 11707))
+_loc("Wooded Isle - Crystal Chest", "Prologue Part 3", ("chest", 11707))   # Prologue logic (user, 0.28.0)
 _loc("Wooded Isle Shrine - An Enormous Boulder", "Wooded Isle Part 1", ("shrine", 100))
-_loc("Wooded Isle Mid-Boss - Bartholomew Kuma Defeated", "Wooded Isle Mid-Boss", ("flag", 11301))
+_loc('Wooded Isle Mid Boss - "Tyrant" Bartholomew Kuma', "Wooded Isle Mid-Boss", ("flag", 11301))
 _loc("Wooded Isle - Gabri Level Up Event 1", "Wooded Isle Mid-Boss", ("flag", 11303))
 _loc("Wooded Isle - Green Orb Chest", "Wooded Isle Mid-Boss", ("chest", 11705))
 _loc("Wooded Isle - Enforcer Ambush", "Wooded Isle Part 2", ("flag", 11281))
-_loc("Wooded Isle Monument - Eternity", "Wooded Isle Part 2", ("flag", 11651))
+_loc('Wooded Isle Monument - "Eternity"', "Wooded Isle Part 2", ("flag", 11651))
 _loc("Wooded Isle Build Site - An Unclimbable Area", "Wooded Isle Part 2", ("shrine", 111))
 _loc("Wooded Isle - Flour Chest", "An Unclimbable Area", ("chest", 11702))
 _loc("Wooded Isle Shrine - What Lies Asleep in the Amber", "Wooded Isle Part 2", ("shrine", 101))
 _loc("Wooded Isle Build Site - An Incomplete Path", "Wooded Isle Part 2 (Right)", ("shrine", 112))
-_loc("Wooded Isle Secret Boss - Captain Buggy Defeated", "An Incomplete Path", ("flag", 11401))
+_loc("Wooded Isle Secret Boss - Buggy the Clown", "An Incomplete Path", ("flag", 11401))
 _loc("Wooded Isle - Gabri Level Up Event 3", "An Incomplete Path", ("flag", 11403))
 _loc("Wooded Isle - Sea King Fin Chest", "An Incomplete Path", ("chest", 11706))
 
 # Goal (option "goal"): the boss that ends the game (event, no location id). Every island is in every seed.
-ENERU = 'Wooded Isle Island Boss - "God" Eneru Defeated'          # EventScriptEndFlag 11351
-MORIA = "Gorge Isle Island Boss - Gecko Moria Defeated"            # EventScriptEndFlag 12351
+ENERU = 'Wooded Isle Island Boss - "God" Eneru'          # EventScriptEndFlag 11351
+MORIA = "Gorge Isle Island Boss - Gecko Moria"            # EventScriptEndFlag 12351
 FINAL_BOSS = "Central Isle - Doom Guardian Defeated"                  # 15020/15030, GameClear ([0x8068A298]+6)
-AOKIJI = "Iceberg Isle Island Boss - Aokiji Defeated"                # EventScriptEndFlag 13355 (0.21.0)
+AOKIJI = 'Iceberg Isle Island Boss - "Aokiji" Kuzan'                # EventScriptEndFlag 13355 (0.21.0)
+BLACKBEARD = 'Cave Isle Island Boss - "Blackbeard" Marshall D. Teach'   # EventScriptEndFlag 14351 (0.27.0)
 GOALS = {0: (ENERU, 11351, "Island Boss"), 1: (MORIA, 12351, "Gorge Isle Island Boss"),
-         2: (FINAL_BOSS, 15030, "Central Isle"), 3: (AOKIJI, 13355, "Iceberg Isle Island Boss")}
+         2: (FINAL_BOSS, 15030, "Central Isle"), 3: (AOKIJI, 13355, "Iceberg Isle Island Boss"),
+         4: (BLACKBEARD, 14351, "Cave Isle Island Boss")}
 GOAL_EVENT, GOAL_FLAG = ENERU, 11351   # defaults for older slot data
+# Extra Final Door Requirement (0.31.0): the Mid / Island Bosses, and the Secret Bosses (location names)
+MID_ISLAND_BOSSES = ['Wooded Isle Mid Boss - "Tyrant" Bartholomew Kuma', ENERU, "Gorge Isle Mid Boss - Captain Kuro",
+                     "Gorge Isle Mid Boss - Don Krieg", MORIA, 'Iceberg Isle Mid Boss - "Tin-Plate" Wapol',
+                     "Iceberg Isle Island Boss - Spandam", AOKIJI, 'Cave Isle Mid Boss - "Fire Fist" Portgas D. Ace',
+                     BLACKBEARD]
+SECRET_BOSSES = ["Wooded Isle Secret Boss - Buggy the Clown", "Gorge Isle Secret Boss - Nightmare Luffy",
+                 "Iceberg Isle Secret Boss - Rampaging Chopper", "Cave Isle Secret Boss - Evil Guardian"]
+
+
+def final_door_bosses(mode: int) -> List[str]:
+    return (MID_ISLAND_BOSSES if mode >= 1 else []) + (SECRET_BOSSES if mode >= 2 else [])
 
 # Crafting first-time checks: (room, row, original result name, art level, dummy?)
 # Art level = row // 8 (rows 0-7 level 0 ... 24-31 level 3, confirmed in game).
@@ -455,13 +547,16 @@ DUMMY_RECIPES: Dict[str, List[int]] = {
 }
 ROOM_LOCATION_PREFIX = {"workshop": "Usopp's Workshop - Craft", "kitchen": "Sanji's Kitchen - Cook",
                         "pharmacy": "Chopper's Pharmacy - Compound"}
-ROOM_ITEM = {"workshop": "Usopp's Workshop", "kitchen": "Sanji's Kitchen", "pharmacy": "Chopper's Pharmacy"}
-# Thousand Sunny options: room -> (unlock option, "required for art" option, character index)
+ROOM_ITEM = {"workshop": "Usopp's Workshop", "kitchen": "Sanji's Kitchen", "pharmacy": "Chopper's Pharmacy",
+             "franky": "Franky's Supplies"}
+# Crafting options: room -> (unlock option, "required for art" option, character index). "franky" = Franky's Supplies
+# (dev2, 0.30.0; only with the franky_supplies option).
 ROOM_OPTIONS = {"workshop": ("workshop_unlock", "usopp_required_for_art", 2),
                 "kitchen": ("kitchen_unlock", "sanji_required_for_art", 3),
-                "pharmacy": ("pharmacy_unlock", "chopper_required_for_art", 5)}
+                "pharmacy": ("pharmacy_unlock", "chopper_required_for_art", 5),
+                "franky": ("franky_supplies_unlock", "franky_required_for_art", 7)}
 ROOM_ART = {"workshop": "Usopp - Progressive Art of Development", "kitchen": "Sanji - Progressive Art of Cooking",
-            "pharmacy": "Chopper - Progressive Art of Compounding"}
+            "pharmacy": "Chopper - Progressive Art of Compounding", "franky": "Franky - Progressive Art of Supplying"}
 for _room, _row, _res, _d in CRAFTS:
     _loc(f"{ROOM_LOCATION_PREFIX[_room]} {_res}", "Thousand Sunny", ("craft", _room, _row))
 
@@ -521,8 +616,8 @@ _loc("First Step on the Gorge Isle", "Gorge Isle Part 1", ("flag", 12200))
 _loc("Gorge Isle - Zombie Ambush", "Gorge Isle Part 1", ("flag", 12251))
 _loc("Gorge Isle - Golden Fruit Chest", "Gorge Isle Part 2", ("chest", 12700))
 _loc("Gorge Isle Shrine - The Silent Ancient Creature", "Gorge Isle Part 2", ("shrine", 200))
-_loc("Gorge Isle Mid-Boss - Captain Kuro Defeated", "Gorge Isle Part 3", ("flag", 12301))
-_loc("Gorge Isle Mid-Boss - Don Krieg Defeated", "Gorge Isle Part 3", ("flag", 12302))
+_loc("Gorge Isle Mid Boss - Captain Kuro", "Gorge Isle Part 3", ("flag", 12301))
+_loc("Gorge Isle Mid Boss - Don Krieg", "Gorge Isle Part 3", ("flag", 12302))
 _loc("Gorge Isle - Gabri Level Up Event 1", "Gorge Isle Part 3", ("flag", 12303))
 _loc("Gorge Isle - Marine Ambush", "Gorge Isle Part 3", ("flag", 12271))
 _loc("Gorge Isle - Red Orb Chest", "Gorge Isle Part 3", ("chest", 12705))
@@ -531,20 +626,20 @@ _loc("Gorge Isle Build Site - An Incomplete Path", "Gorge Isle Part 3", ("shrine
 _loc("Gorge Isle - Antidote Powder Chest", "Gorge Isle Part 4", ("chest", 12701))
 _loc("Gorge Isle - Royal Jelly Chest", "Gorge Isle Part 4", ("chest", 12703))
 _loc("Gorge Isle - Enhanced Reel Chest", "Gorge Isle Part 4", ("chest", 12704))
-_loc("Gorge Isle Monument - Creation", "Gorge Isle Part 4", ("flag", 12652))
+_loc('Gorge Isle Monument - "Creation"', "Gorge Isle Part 4", ("flag", 12652))
 _loc("Gorge Isle Shrine - The Ruins in the Sunset", "Gorge Isle Part 4", ("shrine", 201))
 _loc("Gorge Isle Build Site - An Incomplete Path (2)", "Gorge Isle Part 4", ("shrine", 212))
 _loc("Gorge Isle Build Site - An Unclimbable Path", "Gorge Isle Optional Bridge Path", ("shrine", 213))
 _loc("Gorge Isle - Mask Fragment Chest", "Gorge Isle Optional Ladder Path", ("chest", 12702))
 _loc("Gorge Isle Build Site - An Incomplete Path (3)", "Gorge Isle Optional Ladder Path", ("shrine", 214))
 _loc("Gorge Isle - Large Marine Ambush", "Gorge Isle Optional Poison Path", ("flag", 12263))
-_loc("Gorge Isle Monument - Hope", "Gorge Isle Optional Poison Path", ("flag", 12651))
+_loc('Gorge Isle Monument - "Hope"', "Gorge Isle Optional Poison Path", ("flag", 12651))
 # ---- 0.17.0: islands open with Log Pose items; the final island (Central Isle) and after-Gecko Moria checks.
 _loc("Thousand Sunny - Gold Orb Chest (1)", "Post-Eneru", ("chest", 10852))          # switched on by 11353
 _loc(MORIA, "Gorge Isle Island Boss", ("flag", 12351))
 _loc("Gorge Isle - Gabri Level Up Event 2", "Post-Gecko Moria", ("flag", 12353))
 _loc("Thousand Sunny - Gold Orb Chest (2)", "Post-Gecko Moria", ("chest", 10853))   # switched on by 12353
-_loc("Central Isle Monument - Inferno", "Central Isle", ("flag", 15800))
+_loc('Central Isle Monument - "Inferno"', "Central Isle", ("flag", 15800))
 # Sunny shrine 1010, build site on Wooded Isle once Gorge Isle has been reached (user, 2026-10-22)
 _loc("Thousand Sunny - Wherever Cannon", "Gorge Isle Part 1", ("shrine", 1010))
 
@@ -585,7 +680,7 @@ _loc("Iceberg Isle - Pirate Ambush", "Iceberg Isle Part 1", ("flag", 13251))
 _loc("Iceberg Isle Build Site - An Unclimbable Path", "Iceberg Isle Part 1", ("shrine", 311))
 _loc("Iceberg Isle - Large Mud Puppet Ambush", "Iceberg Isle Part 2", ("flag", 13263))
 _loc("Iceberg Isle Shrine - The Cliff of Ice", "Iceberg Isle Part 2", ("shrine", 300))
-_loc("Iceberg Isle Mid-Boss - Wapol Defeated", "Iceberg Isle Part 4", ("flag", 13301))
+_loc('Iceberg Isle Mid Boss - "Tin-Plate" Wapol', "Iceberg Isle Part 4", ("flag", 13301))
 _loc("Iceberg Isle - Gabri Level Up Event 1", "Iceberg Isle Part 4", ("flag", 13303))
 _loc("Iceberg Isle - White Orb Chest", "Iceberg Isle Part 4", ("chest", 13704))      # switched on by 13303
 _loc("Iceberg Isle - Frozen Meat Chest", "Iceberg Isle Part 4", ("chest", 13703))
@@ -595,7 +690,7 @@ _loc("Iceberg Isle - Mystery Gadget Chest", "Iceberg Isle Optional Ladder Route"
 _loc("Iceberg Isle - Marine Ambush", "Iceberg Isle Part 5", ("flag", 13271))
 _loc("Iceberg Isle Shrine - The Hall of Blizzards", "Iceberg Isle Part 5", ("shrine", 301))
 _loc("Iceberg Isle - Gourmet Mushroom Chest", "Iceberg Isle Part 6", ("chest", 13701))
-_loc("Iceberg Isle Island Boss - Spandam Defeated", "Iceberg Isle Island Boss", ("flag", 13352))
+_loc("Iceberg Isle Island Boss - Spandam", "Iceberg Isle Island Boss", ("flag", 13352))
 # 13353 starts the Aokiji fight after Spandam; its cutscene is a Gabri level-up (user: a location)
 _loc("Iceberg Isle - Gabri Level Up Event 2", "Iceberg Isle Island Boss", ("flag", 13353))
 _loc(AOKIJI, "Iceberg Isle Island Boss", ("flag", 13355))
@@ -603,6 +698,247 @@ _loc("Iceberg Isle - Gabri Level Up Event 3", "Post-Aokiji", ("flag", 13356))
 _loc("Thousand Sunny - Gold Orb Chest (3)", "Post-Aokiji", ("chest", 10854))         # switched on by 13356
 _loc("Thousand Sunny - Restorative Drug Chest", "Post-Aokiji", ("chest", 10855))     # switched on by 13356
 _loc("First Step on the Central Isle", "Central Isle", ("flag", 15200))
+
+# ---- Island 4 update (0.27.0): Cave Isle (user's notes 2026-11-06), plus every island's Obstructed Paths (Moles from
+# Cave Isle Part 2 make them possible). Added last so earlier location ids stay.
+_loc("First Step on the Cave Isle", "Cave Isle Part 1", ("flag", 14200))
+_loc("Cave Isle - Déjà Vu?", "Cave Isle Part 2", ("flag", 14201))
+_loc("Cave Isle - Large Agent Ambush", "Cave Isle Part 2", ("flag", 14253))
+_loc("Cave Isle - World Government Ambush", "Cave Isle Part 2", ("flag", 14271))
+_loc("Cave Isle - Cramped Cave Ambush", "Cave Isle Part 2", ("flag", 14261))
+_loc("Cave Isle - Guardian Ambush", "Cave Isle Poison Route", ("flag", 14281))
+_loc("Cave Isle Shrine - The Burning Cavity", "Cave Isle Part 2", ("shrine", 400))
+_loc("Cave Isle Shrine - The Abyss", "Cave Isle Part 2", ("shrine", 401))
+_loc("Cave Isle Build Site - An Obstructed Path", "Cave Isle Part 2", ("shrine", 411))
+_loc("Cave Isle Build Site - An Incomplete Path", "Cave Isle Part 2", ("shrine", 412))
+_loc('Cave Isle Monument - "Drifting Away"', "Cave Isle Part 2", ("flag", 14651))
+_loc('Cave Isle Monument - "A Certain Island"', "Cave Isle Part 2", ("flag", 14652))
+_loc("Cave Isle - Healing Tonic Chest", "Cave Isle Poison Route", ("chest", 14700))
+_loc("Cave Isle - Tone Dial Chest", "Cave Isle Water Route", ("chest", 14701))        # Map 7
+_loc("Cave Isle - Stamina Tonic Chest", "Cave Isle Part 2", ("chest", 14702))
+_loc("Cave Isle - Pure Iron Ore Chest", "Cave Isle Part 2", ("chest", 14703))         # Map 5
+_loc('Cave Isle Mid Boss - "Fire Fist" Portgas D. Ace', "Cave Isle Mid Boss Room", ("flag", 14301))
+_loc("Cave Isle - Gabri Level Up Event 1", "Cave Isle Mid Boss Room", ("flag", 14303))
+_loc("Cave Isle - Black Orb Chest", "Cave Isle Mid Boss Room", ("chest", 14704))    # switched on by 14303
+_loc(BLACKBEARD, "Cave Isle Island Boss", ("flag", 14351))
+_loc("Cave Isle - Gabri Level Up Event 2", "Post-Blackbeard", ("flag", 14353))
+_loc("Thousand Sunny - Revival Elixir Chest", "Post-Blackbeard", ("chest", 10856))     # switched on by 14353
+_loc("Cave Isle Secret Boss - Evil Guardian", "Cave Isle Secret Boss Room", ("flag", 14401))
+_loc("Cave Isle - Gabri Level Up Event 3", "Cave Isle Secret Boss Room", ("flag", 14403))
+_loc("Cave Isle - Sea King Head Crest Chest", "Cave Isle Secret Boss Room", ("chest", 14705))   # switched on by 14403
+# Wooded Isle: Obstructed Paths 1 and 2 (Build Sites 3 / 4, both in Part 1) lead to the Hidden Beach
+_loc("Wooded Isle Build Site - An Obstructed Path", "Wooded Isle Part 1", ("shrine", 113))
+_loc("Wooded Isle Build Site - An Obstructed Path (2)", "Wooded Isle Part 1", ("shrine", 114))
+_loc('Wooded Isle Monument - "Seal"', "Wooded Isle Hidden Beach", ("flag", 11653))
+_loc("Wooded Isle - Ultimate Reel Chest", "Wooded Isle Hidden Beach", ("chest", 11703))  # Map 10
+# Gorge Isle: Obstructed Path 1 (Build Site 5, Part 1) -> Hidden Area (Brown Fruit); Obstructed Path 2 (Build Site 6,
+# Poison Path) -> Secret Boss Area
+_loc("Gorge Isle Build Site - An Obstructed Path", "Gorge Isle Part 1", ("shrine", 215))
+_loc("Gorge Isle Build Site - An Obstructed Path (2)", "Gorge Isle Optional Poison Path", ("shrine", 216))
+_loc("Gorge Isle Secret Boss - Nightmare Luffy", "Gorge Isle Secret Boss Area", ("flag", 12401))
+_loc("Gorge Isle - Gabri Level Up Event 3", "Gorge Isle Secret Boss Area", ("flag", 12403))
+_loc("Gorge Isle - Sea King Shell Chest", "Gorge Isle Secret Boss Area", ("chest", 12707))   # switched on by 12403
+# Iceberg Isle: Obstructed Path 1 (Build Site 3, Part 2), Obstructed Path 2 (Build Site 4, Ladder Route)
+_loc("Iceberg Isle Build Site - An Obstructed Path", "Iceberg Isle Part 2", ("shrine", 313))
+_loc("Iceberg Isle Build Site - An Obstructed Path (2)", "Iceberg Isle Optional Ladder Route", ("shrine", 314))
+_loc("Iceberg Isle - Revival Elixir Chest", "Iceberg Isle Obstructed Path", ("chest", 13702))   # Map 9
+_loc('Iceberg Isle Monument - "Reward"', "Iceberg Isle Obstructed Path", ("flag", 13652))
+_loc("Iceberg Isle - Enforcer Ambush", "Iceberg Isle Obstructed Path (2)", ("flag", 13281))
+_loc('Iceberg Isle Monument - "Orbs"', "Iceberg Isle Obstructed Path (2)", ("flag", 13651))
+_loc("Iceberg Isle Secret Boss - Rampaging Chopper", "Iceberg Isle Obstructed Path (2)", ("flag", 13401))
+_loc("Iceberg Isle - Gabri Level Up Event 4", "Iceberg Isle Obstructed Path (2)", ("flag", 13403))
+_loc("Iceberg Isle - Hardtack Ration Chest", "Iceberg Isle Obstructed Path (2)", ("chest", 13705))  # by 13403
+
+# ---- 0.28.0: Materialsanity (option materialsanity): first pickup of each natural material = "Got X", checked by
+# the item's "ever obtained" bit. Game item ids from item_src (row numbers). Logic = rules.SOURCES.
+MATERIALS: Dict[int, str] = {
+    31: "Medicinal Herbs", 32: "Toxin", 34: "Bitter Grass", 36: "Royal Jelly", 37: "Nectar", 38: "Bamboo Sprout",
+    39: "Bamboo", 40: "Wood", 42: "Lens", 43: "Rubber Fruit", 44: "Golden Fruit", 45: "Blue Fruit", 46: "Red Fruit",
+    47: "Brown Fruit", 48: "Coconut", 49: "Long Vine", 50: "Spider Web", 52: "Mysterious Seaweed",
+    53: "Mystery Mushroom", 54: "Gourmet Mushroom", 55: "Wilted Carrot", 56: "Snow Radish", 57: "Marble",
+    58: "Frozen Meat", 59: "Flour", 60: "Mysterious Bone", 61: "Clay", 63: "Magnetic Stone", 65: "Dial Fragment",
+    66: "Ice Shard", 67: "Volcanic Rock", 68: "Explosive Rock Fragment", 70: "Pure Iron Ore", 71: "Handy Rock",
+    72: "Scrap from a Cloak", 73: "Iron Scrap", 74: "Golden Egg", 75: "Mystery Egg", 76: "Sticky Sap", 78: "Ashes",
+}   # (Hardtack Ration left out: it stays filler, user 0.29.4. It was the last location, so no other id moved.)
+for _gid, _n in MATERIALS.items():
+    _loc(f"Got {_n}", "Wooded Isle Part 1", ("material", _gid))
+
+# ---- 0.30.0: Extra Crafting Recipes (option extra_crafting_recipes) and Franky's Supplies (option franky_supplies).
+# The empty recipe rows of the three rooms get random recipes (made by the world from each room's material pool,
+# user's Extra_Recipes.xlsx) whose result is an Archipelago Item. Franky's Supplies (dev2): 9 fixed trades for real items
+# paid in Old Gold Coins, the other 23 rows random recipes from Franky's pool.
+EXTRA_SLOTS: Dict[str, List[int]] = {
+    "workshop": [0, 16, 18, 22, 29, 31],
+    "kitchen": [1, 3, 4, 5, 9, 11, 17, 21, 25, 27, 31],
+    "pharmacy": [1, 3, 4, 6, 9, 11, 16, 19, 20, 21, 22, 24, 27, 29, 30],
+}
+# Franky's fixed trades: row -> (result, ((ingredient, count), ...))
+FRANKY_TRADES: Dict[int, Tuple[str, Tuple[Tuple[str, int], ...]]] = {
+    0: ("Scrap from a Cloak", (("Old Gold Coin", 1),)), 4: ("Dial Fragment", (("Old Gold Coin", 1),)),
+    8: ("Brown Fruit", (("Old Gold Coin", 2),)), 12: ("Mole", (("Old Gold Coin", 2),)),
+    16: ("Sticky Sap", (("Old Gold Coin", 3),)), 20: ("Frozen Meat", (("Old Gold Coin", 3),)),
+    24: ("Sea King Fin", (("Old Gold Coin", 5), ("Special Pirate Soda", 1))),
+    28: ("Sea King Head Crest", (("Old Gold Coin", 5), ("Special Pirate Soda", 1))),
+    29: ("Sea King Shell", (("Old Gold Coin", 5), ("Special Pirate Soda", 1))),
+}
+FRANKY_AP_ROWS: List[int] = [r for r in range(32) if r not in FRANKY_TRADES]
+# Rarity weights and how many different ingredients a random recipe asks for (user)
+RARITY_WEIGHTS = {"C": 0.45, "U": 0.25, "R": 0.15, "S": 0.08, "V": 0.05, "L": 0.02}
+INGREDIENT_COUNT_WEIGHTS = {1: 20, 2: 50, 3: 25, 4: 5}
+# Pools: (ingredient, rarity, amount: "1", "1-3" or "10/20/30" = one of those). 0.30.2 (user): every 1-5 is now 1-3;
+# Lens, Pure Iron Ore, Mystery Egg, the three Tonics and Magnetic Stone always 1; Restorative Drug left out.
+EXTRA_POOLS: Dict[str, List[Tuple[str, str, str]]] = {
+    "workshop": [
+        ('Bitter Grass', "C", "1-3"), ('Royal Jelly', "C", "1-3"), ('Nectar', "C", "1-3"), 
+        ('Bamboo Sprout', "C", "1-3"), ('Bamboo', "C", "1-3"), ('Wood', "C", "1-3"), ('Lens', "C", "1"), 
+        ('Rubber Fruit', "C", "1-3"), ('Coconut', "C", "1-3"), ('Long Vine', "C", "1-3"), ('Spider Web', "C", "1-3"), 
+        ('Marble', "C", "1-3"), ('Mysterious Bone', "C", "1-3"), ('Clay', "C", "1-3"), ('Ice Shard', "C", "1-3"), 
+        ('Volcanic Rock', "C", "1-3"), ('Explosive Rock Fragment', "C", "1-3"), ('Handy Rock', "C", "1-3"), 
+        ('Iron Scrap', "C", "1-3"), ('Sticky Sap', "C", "1"), ('Treasure Shell', "L", "1"), 
+        ('Sea King Fin', "L", "1"), ('Sea King Head Crest', "L", "1"), ('Sea King Shell', "L", "1"), 
+        ('Flame Powder', "R", "10/20/30"), ('Ice Powder', "R", "10/20/30"), ('Thunder Powder', "R", "10/20/30"), 
+        ('Syrup', "R", "1"), ('Traps', "R", "1"), ('Magnetic Stone', "R", "1"), ('Pure Iron Ore', "R", "1"), 
+        ('Tempest Mouse', "R", "1"), ('Lightning Beetle', "R", "1"), ('Flying Penguin', "R", "1"), 
+        ('Lantern Trilobite', "R", "1"), ('Scrap from a Cloak', "S", "1"), ('Skull Knight', "S", "1"), 
+        ('Special Pirate Soda', "S", "1"), ('Gunpowder', "U", "10/20/30"), ('Kuwagata', "U", "1"), 
+        ('Mysterious Seaweed', "U", "1-3"), ('Dial Fragment', "U", "1-3"), ('Mystery Egg', "U", "1"), 
+        ('Ashes', "U", "1-3"), ('Seagull', "U", "1"), ('Tree Frog', "U", "1"), ('Hercules Beetle', "U", "1"), 
+        ('Rock Lizard', "U", "1"), ('Icicle Lizard', "U", "1"), ('Ice Beetle', "U", "1"), 
+        ('Fire Hercules', "U", "1"), ('Clawed Shrimp', "U", "1"), ('Striped Clam', "U", "1"), 
+        ('Fist Crayfish', "U", "1"), ('Adventure Fish', "U", "1"), ('Flamethrowers', "V", "10/20/30"), 
+        ('Batteries', "V", "10/20/30"), ('Bombs', "V", "10/20/30"), ('Poison Ball', "V", "10/20/30"), 
+        ('Golden Egg', "V", "1"), ('Golden Hercules', "V", "1"), ('Shark', "V", "1"), ('Panda Shark', "V", "1"), 
+    ],
+    "kitchen": [
+        ('Medicinal Herbs', "C", "1-3"), ('Bitter Grass', "C", "1-3"), ('Royal Jelly', "C", "1-3"), 
+        ('Nectar', "C", "1-3"), ('Bamboo', "C", "1-3"), ('Rubber Fruit', "C", "1-3"), ('Golden Fruit', "C", "1-3"), 
+        ('Blue Fruit', "C", "1-3"), ('Red Fruit', "C", "1-3"), ('Coconut', "C", "1-3"), 
+        ('Mystery Mushroom', "C", "1-3"), ('Gourmet Mushroom', "C", "1-3"), ('Wilted Carrot', "C", "1-3"), 
+        ('Flour', "C", "1-3"), ('Ice Shard', "C", "1-3"), ('Mystery Egg', "C", "1"), ('Hardtack Ration', "C", "1"), 
+        ('Treasure Shell', "L", "1"), ('Sea King Fin', "L", "1"), ('Sea King Head Crest', "L", "1"), 
+        ('Sea King Shell', "L", "1"), ('Flame Powder', "R", "10/20/30"), ('Ice Powder', "R", "10/20/30"), 
+        ('Healing Tonic', "R", "1"), ('Stamina Tonic', "R", "1"), ('Dual-Action Tonic', "R", "1"), 
+        ('Syrup', "R", "1"), ('Brown Fruit', "R", "1-3"), ('Frozen Meat', "R", "1"), ('Mysterious Bone', "R", "1-3"), 
+        ('Volcanic Rock', "R", "1-3"), ('Flying Penguin', "R", "1"), ('Ice Sunfish', "R", "1"), 
+        ('Skull Knight', "R", "1"), ('Elephant Tuna', "R", "1"), ('Mysterious Seaweed', "U", "1-3"), 
+        ('Snow Radish', "U", "1-3"), ('Sticky Sap', "U", "1"), ('Seagull', "U", "1"), ('Tempest Mouse', "U", "1"), 
+        ('Honey Bee', "U", "1"), ('Tree Frog', "U", "1"), ('Doctor Hornet', "U", "1"), ('Rock Lizard', "U", "1"), 
+        ('Mammoth Toad', "U", "1"), ('Icicle Lizard', "U", "1"), ('Clawed Shrimp', "U", "1"), 
+        ('Striped Clam', "U", "1"), ('Fist Crayfish', "U", "1"), ('Forked-Tail Killifish', "U", "1"), 
+        ('Smiley Jellyfish', "U", "1"), ('Oriental Butterflyfish', "U", "1"), ('Shining Saury', "U", "1"), 
+        ('Balloon Catfish', "U", "1"), ('Adventure Fish', "U", "1"), ('Golden Egg', "V", "1"), 
+        ('Superstar Starfish', "V", "1"), ('Salamandrake', "V", "1"), ('Shark', "V", "1"), ('Panda Shark', "V", "1"), 
+    ],
+    "pharmacy": [
+        ('Flamethrowers', "V", "10/20/30"), ('Flame Powder', "S", "10/20/30"), ('Ice Powder', "S", "10/20/30"), 
+        ('Thunder Powder', "S", "10/20/30"), ('Gunpowder', "R", "10/20/30"), ('Poison Ball', "S", "10/20/30"), 
+        ('Healing Tonic', "R", "1"), ('Healing Capsule', "C", "1-3"), ('Stamina Tonic', "R", "1"), 
+        ('Stamina Capsule', "C", "1-3"), ('Dual-Action Tonic', "R", "1"), ('Dual-Action Capsule', "C", "1-3"), 
+        ('Antidote Powder', "S", "1"), ('Anti-Cold Cream', "S", "1"), 
+        ('Syrup', "R", "1"), ('Medicinal Herbs', "C", "1-3"), ('Toxin', "C", "1-3"), ('Bitter Grass', "C", "1-3"), 
+        ('Royal Jelly', "C", "1-3"), ('Nectar', "C", "1-3"), ('Bamboo Sprout', "R", "1-3"), ('Bamboo', "R", "1-3"), 
+        ('Wood', "C", "1-3"), ('Lens', "S", "1"), ('Coconut', "C", "1-3"), ('Mysterious Seaweed', "S", "1-3"), 
+        ('Mystery Mushroom', "C", "1-3"), ('Gourmet Mushroom', "C", "1-3"), ('Ice Shard', "R", "1-3"), 
+        ('Volcanic Rock', "R", "1-3"), ('Explosive Rock Fragment', "S", "1-3"), ('Handy Rock', "R", "1-3"), 
+        ('Iron Scrap', "R", "1-3"), ('Mystery Egg', "C", "1"), ('Sticky Sap', "C", "1-3"), ('Ashes', "C", "1-3"), 
+        ('Invisible Swallowtail', "R", "1"), ('Swallowtail Butterfly', "R", "1"), ('Honey Bee', "R", "1"), 
+        ('Tree Frog', "R", "1"), ('Doctor Hornet', "R", "1"), ('Lightning Beetle', "R", "1"), 
+        ('Hercules Beetle', "R", "1"), ('Golden Hercules', "R", "1"), ('Rock Lizard', "R", "1"), 
+        ('Mammoth Toad', "R", "1"), ('Icicle Lizard', "R", "1"), ('Ice Beetle', "R", "1"), 
+        ('Sleep Butterfly', "R", "1"), ('Fire Hercules', "R", "1"), ('Light Bulb Firefly', "R", "1"), 
+        ('Lantern Trilobite', "R", "1"), ('Smiley Jellyfish', "R", "1"), 
+    ],
+    "franky": [
+        ('Flamethrowers', "V", "10/20/30"), ('Flame Powder', "S", "10/20/30"), ('Ice Powder', "S", "10/20/30"), 
+        ('Batteries', "V", "10/20/30"), ('Thunder Powder', "S", "10/20/30"), ('Bombs', "S", "10/20/30"), 
+        ('Gunpowder', "R", "10/20/30"), ('Poison Ball', "V", "10/20/30"), ('Healing Tonic', "R", "1"), 
+        ('Healing Capsule', "U", "1-3"), ('Stamina Tonic', "R", "1"), ('Stamina Capsule', "U", "1-3"), 
+        ('Dual-Action Tonic', "R", "1"), ('Dual-Action Capsule', "U", "1-3"), 
+        ('Antidote Powder', "S", "1"), ('Anti-Cold Cream', "S", "1"), ('Traps', "V", "1"), ('Kuwagata', "R", "1"), 
+        ('Syrup', "R", "1"), ('Medicinal Herbs', "C", "1-3"), ('Toxin', "C", "1-3"), ('Bitter Grass', "C", "1-3"), 
+        ('Royal Jelly', "C", "1-3"), ('Nectar', "C", "1-3"), ('Bamboo Sprout', "C", "1-3"), ('Bamboo', "C", "1-3"), 
+        ('Wood', "C", "1-3"), ('Lens', "C", "1"), ('Rubber Fruit', "C", "1-3"), ('Golden Fruit', "U", "1-3"), 
+        ('Blue Fruit', "C", "1-3"), ('Red Fruit', "C", "1-3"), ('Brown Fruit', "R", "1-3"), ('Coconut', "C", "1-3"), 
+        ('Long Vine', "C", "1-3"), ('Spider Web', "C", "1-3"), ('Mysterious Seaweed', "R", "1-3"), 
+        ('Mystery Mushroom', "C", "1-3"), ('Gourmet Mushroom', "C", "1-3"), ('Wilted Carrot', "C", "1-3"), 
+        ('Snow Radish', "C", "1-3"), ('Marble', "C", "1-3"), ('Frozen Meat', "S", "1-3"), ('Flour', "C", "1-3"), 
+        ('Mysterious Bone', "C", "1-3"), ('Clay', "C", "1-3"), ('Magnetic Stone', "S", "1"), 
+        ('Dial Fragment', "R", "1-3"), ('Ice Shard', "C", "1-3"), ('Volcanic Rock', "R", "1-3"), 
+        ('Explosive Rock Fragment', "S", "1-3"), ('Pure Iron Ore', "V", "1"), ('Handy Rock', "C", "1-3"), 
+        ('Scrap from a Cloak', "R", "1-3"), ('Iron Scrap', "C", "1-3"), ('Golden Egg', "V", "1"), 
+        ('Mystery Egg', "C", "1"), ('Sticky Sap', "R", "1-3"), ('Ashes', "C", "1-3"), ('Seagull', "S", "1"), 
+        ('Tempest Mouse', "V", "1"), ('Invisible Swallowtail', "V", "1"), ('Swallowtail Butterfly', "S", "1"), 
+        ('Honey Bee', "S", "1"), ('Tree Frog', "S", "1"), ('Doctor Hornet', "S", "1"), 
+        ('Lightning Beetle', "S", "1"), ('Flying Penguin', "V", "1"), ('Hercules Beetle', "S", "1"), 
+        ('Golden Hercules', "V", "1"), ('Rock Lizard', "S", "1"), ('Mammoth Toad', "V", "1"), ('Mole', "L", "1"), 
+        ('Icicle Lizard', "S", "1"), ('Ice Beetle', "S", "1"), ('Sleep Butterfly', "S", "1"), 
+        ('Fire Hercules', "S", "1"), ('Light Bulb Firefly', "S", "1"), ('Lantern Trilobite', "S", "1"), 
+        ('Clawed Shrimp', "S", "1"), ('Treasure Shell', "S", "1"), ('Striped Clam', "S", "1"), 
+        ('Superstar Starfish', "S", "1"), ('Fist Crayfish', "S", "1"), ('Forked-Tail Killifish', "S", "1"), 
+        ('Smiley Jellyfish', "S", "1"), ('Oriental Butterflyfish', "S", "1"), ('Shining Saury', "S", "1"), 
+        ('Salamandrake', "V", "1"), ('Balloon Catfish', "S", "1"), ('Adventure Fish', "S", "1"), 
+        ('Ice Sunfish', "S", "1"), ('Skull Knight', "S", "1"), ('Elephant Tuna', "V", "1"), ('Shark', "V", "1"), 
+        ('Panda Shark', "V", "1"), ('Sea King Fin', "L", "1"), ('Sea King Head Crest', "L", "1"), 
+        ('Sea King Shell', "L", "1"), ('Angel Omelette', "V", "1"), ('Broiled Killifish', "V", "1"), 
+        ('Large Mushroom Salad', "V", "1"), ('Seagull Bone Soup', "V", "1"), ('Mock Cherry Pie', "V", "1"), 
+        ('Simmered Ecrevisse', "V", "1"), ('Pirate Shaved Ice', "V", "1"), ('Shrimp with Tartar Sauce', "V", "1"), 
+        ('Stamina Stew', "V", "1"), ("Spicy Miso Shark's Fin", "V", "1"), ('Octopus Dumplings', "V", "1"), 
+        ('Ancient-Recipe Soup', "V", "1"), ('Sashimi Assortment', "V", "1"), ("Meat-Lover's Delight", "L", "1"),
+        ('Roasted Meat Festival', "L", "1"), ('Giant Shell Boat', "L", "1"), ('Sauteed Tuna Steak', "L", "1"), 
+        ('Saury Full Course', "V", "1"), ('Baked Stone Stew', "V", "1"), ('Special Pirate Soda', "R", "1-3"), 
+        ("Pirate's Lunch", "V", "1"), ('Hardtack Ration', "V", "1"), 
+    ],
+}
+POOL_ITEM_IDS: Dict[str, int] = {
+    'Adventure Fish': 128, 'Ancient-Recipe Soup': 151, 'Angel Omelette': 140, 'Anti-Cold Cream': 26,
+    'Antidote Powder': 25, 'Ashes': 78, 'Baked Stone Stew': 158, 'Balloon Catfish': 127, 'Bamboo': 39,
+    'Bamboo Sprout': 38, 'Batteries': 12, 'Bitter Grass': 34, 'Blue Fruit': 45, 'Bombs': 14,
+    'Broiled Killifish': 141, 'Brown Fruit': 47, 'Clawed Shrimp': 117, 'Clay': 61, 'Coconut': 48,
+    'Dial Fragment': 65, 'Doctor Hornet': 103, 'Dual-Action Capsule': 22, 'Dual-Action Tonic': 21,
+    'Elephant Tuna': 131, 'Explosive Rock Fragment': 68, 'Fire Hercules': 114, 'Fist Crayfish': 121,
+    'Flame Powder': 10, 'Flamethrowers': 9, 'Flour': 59, 'Flying Penguin': 105, 'Forked-Tail Killifish': 122,
+    'Frozen Meat': 58, 'Giant Shell Boat': 155, 'Golden Egg': 74, 'Golden Fruit': 44, 'Golden Hercules': 107,
+    'Gourmet Mushroom': 54, 'Gunpowder': 15, 'Handy Rock': 71, 'Hardtack Ration': 161, 'Healing Capsule': 18,
+    'Healing Tonic': 17, 'Hercules Beetle': 106, 'Honey Bee': 101, 'Ice Beetle': 112, 'Ice Powder': 11,
+    'Ice Shard': 66, 'Ice Sunfish': 129, 'Icicle Lizard': 111, 'Invisible Swallowtail': 99, 'Iron Scrap': 73,
+    'Kuwagata': 28, 'Lantern Trilobite': 116, 'Large Mushroom Salad': 142, 'Lens': 42, 'Light Bulb Firefly': 115,
+    'Lightning Beetle': 104, 'Long Vine': 49, 'Magnetic Stone': 63, 'Mammoth Toad': 109, 'Marble': 57,
+    "Meat-Lover's Delight": 153, 'Medicinal Herbs': 31, 'Mock Cherry Pie': 144, 'Mole': 110, 'Mysterious Bone': 60,
+    'Mysterious Seaweed': 52, 'Mystery Egg': 75, 'Mystery Mushroom': 53, 'Nectar': 37, 'Octopus Dumplings': 150,
+    'Old Gold Coin': 79, 'Oriental Butterflyfish': 124, 'Panda Shark': 133, 'Pirate Shaved Ice': 146,
+    "Pirate's Lunch": 160, 'Poison Ball': 16, 'Pure Iron Ore': 70, 'Red Fruit': 46, 'Restorative Drug': 24,
+    'Roasted Meat Festival': 154, 'Rock Lizard': 108, 'Royal Jelly': 36, 'Rubber Fruit': 43, 'Salamandrake': 126,
+    'Sashimi Assortment': 152, 'Saury Full Course': 157, 'Sauteed Tuna Steak': 156, 'Scrap from a Cloak': 72,
+    'Sea King Fin': 137, 'Sea King Head Crest': 138, 'Sea King Shell': 139, 'Seagull': 97, 'Seagull Bone Soup': 143,
+    'Shark': 132, 'Shining Saury': 125, 'Shrimp with Tartar Sauce': 147, 'Simmered Ecrevisse': 145,
+    'Skull Knight': 130, 'Sleep Butterfly': 113, 'Smiley Jellyfish': 123, 'Snow Radish': 56,
+    'Special Pirate Soda': 159, "Spicy Miso Shark's Fin": 149, 'Spider Web': 50, 'Stamina Capsule': 20,
+    'Stamina Stew': 148, 'Stamina Tonic': 19, 'Sticky Sap': 76, 'Striped Clam': 119, 'Superstar Starfish': 120,
+    'Swallowtail Butterfly': 100, 'Syrup': 30, 'Tempest Mouse': 98, 'Thunder Powder': 13, 'Toxin': 32, 'Traps': 27,
+    'Treasure Shell': 118, 'Tree Frog': 102, 'Volcanic Rock': 67, 'Wilted Carrot': 55, 'Wood': 40,
+}
+
+
+for _room, _rows in EXTRA_SLOTS.items():
+    for _k, _row in enumerate(_rows):
+        _loc(f"{ROOM_ITEM[_room]} - Extra Recipe #{_k + 1}", "Thousand Sunny", ("craft", _room, _row))
+for _row, (_res, _ing) in FRANKY_TRADES.items():
+    _loc(f"Franky's Supplies - {_res} Trade", "Thousand Sunny", ("craft", "franky", _row))
+for _k, _row in enumerate(FRANKY_AP_ROWS):
+    _loc(f"Franky's Supplies - Archipelago Trade #{_k + 1}", "Thousand Sunny", ("craft", "franky", _row))
+EXTRA_RECIPE_LOCATIONS: Dict[Tuple[str, int], str] = {
+    l.check[1:]: l.name for l in LOCATIONS
+    if l.check[0] == "craft" and (" - Extra Recipe #" in l.name or l.name.startswith("Franky's Supplies - "))}
+
+
+def amount_choices(spec: str) -> List[int]:
+    if "/" in spec:
+        return [int(x) for x in spec.split("/")]
+    if "-" in spec:
+        lo, hi = spec.split("-")
+        return list(range(int(lo), int(hi) + 1))
+    return [int(spec)]
+
 
 LOCATION_TABLE: Dict[str, LocDef] = {l.name: l for l in LOCATIONS}
 LOCATION_IDS: Dict[str, int] = {l.name: BASE_ID + n for n, l in enumerate(LOCATIONS)}

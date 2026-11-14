@@ -1,5 +1,49 @@
 # Changelog
 
+## Version v1.0.0 - First Feature Complete Build
+This week's update is... **SUPER!** :star:
+There are a handful of major features within this update, as well as some extra options and QoL changes! This is our first build I'm happy to call feature complete!
+
+> Generate a new seed with this version and the new `OPUC1.yaml`. Older YAMLs fall back to the defaults for the new options.
+
+## What's New?
+### **The Cave Isle, The Underwater Passage**
+The main feature of this update, adds the 4th Island to the run, meaning all Islands are in the Archipelago! This means Locations for all the bosses, ambushes, shrines, stone monuments, treasure chests, as well as new locations for Usopp's Workshop / Sanji's Kitchen / Chopper's Pharmacy / Fishsanity / Creaturesanity with all the Cave Isle has to offer.
+Moles are finally in logic with the addition of the Cave Isle, so all the Obstructed Path Build Sites on the other Islands can now be accessed, adding Nightmare Luffy, Rampaging Chopper and all sorts of other Chests and Monuments into Logic.
+
+### **Franky's Supplies & Extra Recipes**
+Our 2nd biggest addition this update! After digging into the menu data, I managed to find quite a bit of early development data for UC2, including the 2nd Development Menu, left completely unused in UC1. I've added this menu into the game as a 4th crafting menu that you access via the Side Doors on the Sunny, replacing the Storage's Touchspots. Here, you can trade in Old Gold Coins for various items that can be pretty tedious to get normally, such as Dial Fragments. This menu also has 20+ Archipelago Item crafting recipes. A New Feature has been added called "Extra Recipes", which fills in the rest of the 32-slot crafting menus for Development/Cooking/Pharmacy, adding **30+** new Crafting Recipes for Archipelago Items! The Materials needed for both these new Extra Recipes as well as all the Archipelago Items in Franky's Supplies are randomized at seed generation!
+*(You can still access the Storage via the Menu)*
+
+This is a completely separate crafting menu from Usopp's Workshop, so instead of Art of Development, the required skill to level up to unlock more recipes is Franky's Supply Skill, which has been renamed to "Art of Supplying". It still reduces Build Site costs as usual. Old Gold Coins have become a lot easier to find when Franky's Supplies is enabled. The following changes get applied:
+- The Flour/Hardtack Ration Barrels have a 50% chance to drop Old Gold Coins instead.
+- Golden Hercules now drop 1-5 Old Gold Coins instead of Sticky Sap.
+  *(You can still obtain Sticky Sap from regular Hercules Beetles. Sticky Sap is also one of the trade items you can receive from Franky's Supplies)*
+- All the "Junk" Salvage Items you pick up from Fishing become Old Gold Coins.
+- The Sea Anemones on the Cave Isle drop Old Gold Coins instead of Black Orbs.
+- Thousand Sunny's dust spots drop Old Gold Coins instead.
+- Old Gold Coins have also been added to the "Other Items" filler pool.
+  *(Including Packages)*
+
+### **Energy Link Support**
+Energy Link has been added! A tab has been added to the client, where you can manage Gabri's 6 energy bars. Gabri takes 100 Energy to fill a bar. For Energy Link, 1 Energy = 10 MJ, so 1 bar of Gabri Energy is 1 GJ. There is a 20% cut when converting. Gold Energy takes twice as much to fill, but also gives out twice the amount of energy when converting. This makes grinding energy a lot smoother, as you can move energy between the bars, so I highly recommend using this option even if this is the only game using Energy Link.
+
+### **Other New Features/Options**
+- **Archipelago Client Icon** - The ONE PIECE: Unlimited Cruise 1 AP Client now has a unique icon in the Archipelago Launcher.
+- **In-Game Archipelago Messages** - Items you receive or send to other players will be displayed as text in-game. *(You can tweak it/turn it off via the OPUC1 Client)*
+- **Extra Final Door Requirement** - You can choose if you want to defeat all Island Bosses/All Bosses, before goaling.
+- **Gabri Energy Items** - You can now choose to have all Gabri Level Ups to be per colour.
+- **How Many Gabri Level Items** - You can choose how many of those per colour upgrades exist.
+- **Starting Gabri Energy** - You can choose your starting Gabri Energy. *(always starting with at least 1 Blue Energy to avoid getting hard gated in the Prologue)*
+- **The Wherever Cannon** - You can choose if the Wherever Cannon is unlocked via completing its Build Site, or have it be directly unlocked on the Sunny upon finding the AP item.
+- **Materialsanity** - Adds 40 "Got" Locations for first-time pick up of a Material.
+- **Expanded Storage** - The Storage can now hold up to 45 Items.
+- **Easier Fish** - Fish have a 50% weaker pull strength when reeling in.
+- **Better Plant Drop Rates** - Now includes Ashes and Mysterious Seaweed *(both now 80% drop rate from their natural sources)*
+
+### Known Issue
+Don't load a save after quitting to the title screen - it can hang on a black screen. Close the game, start it again (client at the title screen) and load from there. Your save is fine.
+
 ## ALPHA Build v0.25.18 - Hotfix
 Another hotfix. One new YAML option (Item Options), so grab the new `OPUC1.yaml` if you want it; older YAMLs use the vanilla amounts.
 

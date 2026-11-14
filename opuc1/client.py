@@ -10,6 +10,7 @@ import zlib
 import os
 import time
 import traceback
+import uuid
 from collections import Counter
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -26,18 +27,73 @@ except ImportError:
     from CommonClient import CommonContext
 from NetUtils import ClientStatus, NetworkItem
 
-from .data import (RETIRED_TRAPS, ROD_GRADE_BYTES_4, line_level, rod_level_from_items, BASE_ID, CHARACTERS, CRAFTS, DUMMY_RECIPES, GAME, GOALS, ITEM_IDS, ITEM_TABLE, ITEMS,
+from .data import (GABRI_COLOUR_ITEMS, gabri_colour_bars, RETIRED_TRAPS, ROD_GRADE_BYTES_4, line_level, rod_level_from_items, BASE_ID, CHARACTERS, CRAFTS, DUMMY_RECIPES, GAME, GOALS, ITEM_IDS, ITEM_TABLE, ITEMS,
                    LOCATION_IDS, LOCATIONS, SHRINE_ACCESS, ROOM_OPTIONS, ART_ITEMS, ROOM_ART,
-                   MAP_FRAGMENT_GROUPS, BUILD_SITE_IDS)
+                   MAP_FRAGMENT_GROUPS, BUILD_SITE_IDS, FRANKY_TRADES, POOL_ITEM_IDS, ROOM_ITEM, LOCATION_TABLE,
+                   final_door_bosses)
 
 try:
     from .game_state import (GO_REQ, BAG_CAPACITY, HIDDEN_ALSO_COMMENT, HIDDEN_AP_COMMENT, NO_LOCATION_COMMENT, GameState,
-                             also_comes_comment, placeholder_comment, rod_level_byte, item_kind)
+                             also_comes_comment, placeholder_comment, rod_level_byte, item_kind, caption_pages,
+                             CAPTION_POSITIONS)
 except ImportError as e:  # dolphin_memory_engine missing
     GameState = None
     IMPORT_ERROR = e
 
 ID_TO_ITEM = {v: k for k, v in ITEM_IDS.items()}
+# On-screen messages (0.26.0): everything you send to other players; of what you receive, by default only items
+# with no in-game popup or info box of their own (user): Straw Hats, Build Site / Shrine Access, the crafting rooms,
+# traps, Progressive Fishing Rod Level / Line and Progressive Gabri Level. "/messages moves on" adds moves / skills /
+# co-op moves, "/messages inventory on" everything else (tools, key items, food ...). Settings: /messages.
+CAPTION_KINDS = {"character", "shrine", "room", "trap", "rod_level", "rod_line", "gabri", "gabri_colour", "cannon"}
+CAPTION_MOVE_KINDS = {"move", "ability", "coop"}
+CAPTION_COLOURS = {"Progression": "AF99EF", "Useful": "6D8BE8", "Filler": "00EEEE", "Trap": "FA8072"}   # AP's own
+MESSAGE_DEFAULTS = {"on": True, "sent": True, "received": True, "inventory": False, "moves": False, "colour": True,
+                    "scale": 0.8, "time": 4.0, "outline": 1.5, "position": "top"}
+MESSAGE_SWITCHES = ("on", "sent", "received", "inventory", "moves", "colour")
+
+
+# Energy Link (0.29.0, option energy_link): joules per Gabri Energy point (100 = one bar) per slot (Red, Green, Blue,
+# White, Black, Gold): 10 MJ, Gold twice as expensive. Converting into the bank keeps 80% (a 20% cut).
+EL_JOULES = [10_000_000] * 5 + [20_000_000]
+EL_KEEP = 0.8
+EL_NAMES = ["Red", "Green", "Blue", "White", "Black", "Gold"]
+
+
+def caption_rgb(flags: int, colour: bool = True) -> Tuple[float, float, float]:
+    if not colour:
+        return (1.0, 1.0, 1.0)
+    kind = "Trap" if flags & 4 else item_kind(flags) if GameState else "Filler"
+    h = CAPTION_COLOURS[kind]
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+def _settings_path() -> str:
+    return Utils.user_path("opuc1_messages.json")
+
+
+def load_message_settings() -> dict:
+    out = dict(MESSAGE_DEFAULTS)
+    try:
+        with open(_settings_path()) as f:
+            out.update({k: v for k, v in json.load(f).items() if k in MESSAGE_DEFAULTS})
+    except (OSError, ValueError):
+        pass
+    return out
+
+
+def save_message_settings(st: dict) -> None:
+    try:
+        with open(_settings_path(), "w") as f:
+            json.dump(st, f, indent=1)
+    except OSError:
+        pass
+
+
+def caption_offset(pos) -> Tuple[float, float]:
+    if isinstance(pos, (list, tuple)) and len(pos) == 2:
+        return (float(pos[0]), float(pos[1]))
+    return CAPTION_POSITIONS.get(str(pos), CAPTION_POSITIONS["top"])
 GABRI_LEVELS = ITEM_TABLE["Progressive Gabri Level"].count     # 13
 try:
     import json as _json, pkgutil as _pkgutil
@@ -64,12 +120,85 @@ SUNNY_FLAG = 11990          # "First Step on the Thousand Sunny": the Pickaxe is
 SUNNY_SCENE = 10070
 MOVE_LOCS = [(lid, c[1], c[2], c[3]) for lid, c in CHECKS_BY_KIND.get("move", [])]
 CATCH_LOCS = {c[1]: lid for lid, c in CHECKS_BY_KIND.get("catch", [])}     # fish / creature item -> location
+MATERIAL_LOCS = {c[1]: lid for lid, c in CHECKS_BY_KIND.get("material", [])}  # Materialsanity: item -> location
 DUMMY_CRAFTS = {(room, row) for room, row, _, dummy in CRAFTS if dummy}
+
+
+def franky_on(sd: dict) -> bool:
+    return bool(int(sd.get("franky_supplies", 0)))
+
+
+def dust_spot_items(sd: dict) -> List[int]:
+    """The Sunny's 5 dust spots: the seed's random Orbs, or Old Gold Coins with Franky's Supplies (0.33.4, user)."""
+    return [79] * 5 if franky_on(sd) else list(sd.get("vacuum_orbs", [85] * 5))
+
+
+def recipe_rooms(sd: dict) -> Tuple[str, ...]:
+    """Crafting menus the client manages (Franky's Supplies = dev2 only with franky_supplies, 0.30.0)."""
+    return ("workshop", "kitchen", "pharmacy") + (("franky",) if franky_on(sd) else ())
+
+
+def custom_recipes(sd: dict) -> Dict[Tuple[str, int], Tuple[int, List[Tuple[int, int]], bool]]:
+    """Rows the client writes (0.30.0): random recipes from the slot data (Archipelago results) and Franky's fixed
+    trades (real results)."""
+    out = {(room, int(row)): (0, [(int(g), int(n)) for g, n in ing], True)
+           for room, row, ing in sd.get("extra_recipes", [])}
+    if franky_on(sd):
+        for row, (res, ing) in FRANKY_TRADES.items():
+            out[("franky", row)] = (POOL_ITEM_IDS[res], [(POOL_ITEM_IDS[n], c) for n, c in ing], False)
+    return out
 CONSUMABLE_KINDS = {"filler"}
 TRAP_MS, TRAP_GAP = 5000, 2.0      # each trap's status time (ms, as tested by the user) and a pause between traps
 
 
 class OPUCCommandProcessor(ClientCommandProcessor):
+    def _cmd_messages(self, *args: str) -> None:
+        """On-screen messages. /messages = show settings. /messages on|off; sent|received|inventory|moves|colour on|off;
+        scale 0.8; time 4 (seconds); outline 1.5 (0 = none); position top|topleft|topright|middle|bottom|lower|left|
+        right or position X Y; test; reset."""
+        ctx = self.ctx
+        if not isinstance(ctx, OPUCContext):
+            return
+        st = ctx.msg
+        a = [x.lower() for x in args]
+        try:
+            if not a:
+                pass
+            elif a[0] in ("on", "off"):
+                st["on"] = a[0] == "on"
+            elif a[0] in MESSAGE_SWITCHES and len(a) >= 2 and a[1] in ("on", "off"):
+                st[a[0]] = a[1] == "on"
+            elif a[0] in ("scale", "time", "outline") and len(a) >= 2:
+                v = float(a[1])
+                lo, hi = {"scale": (0.3, 2.0), "time": (1.0, 30.0), "outline": (0.0, 5.0)}[a[0]]
+                st[a[0]] = max(lo, min(hi, v))
+            elif a[0] == "position" and len(a) >= 2:
+                if a[1] in CAPTION_POSITIONS:
+                    st["position"] = a[1]
+                elif len(a) >= 3:
+                    st["position"] = [float(a[1]), float(a[2])]
+                else:
+                    raise ValueError(a[1])
+            elif a[0] == "test":
+                for kind, flags in (("Progression", 1), ("Useful", 2), ("Filler", 0), ("Trap", 4)):
+                    ctx.queue_caption(f"Sent Example {kind} Item to Someone", flags)
+                logger.info("Four test messages queued (they show in the game once a save is loaded).")
+                return
+            elif a[0] == "reset":
+                st.clear()
+                st.update(MESSAGE_DEFAULTS)
+            else:
+                raise ValueError(a[0])
+        except ValueError:
+            logger.info("Not understood. " + (self._cmd_messages.__doc__ or ""))
+            return
+        save_message_settings(st)
+        pos = st["position"]
+        logger.info("On-screen messages: " + ("on" if st["on"] else "off")
+                    + " | " + ", ".join(f"{k} {'on' if st[k] else 'off'}" for k in MESSAGE_SWITCHES[1:])
+                    + f" | scale {st['scale']:g}, time {st['time']:g} s, outline {st['outline']:g}, position "
+                    + (pos if isinstance(pos, str) else f"{pos[0]:g} {pos[1]:g}"))
+
     def _cmd_dolphin(self) -> None:
         """Show the Dolphin connection status."""
         self._cmd_status()
@@ -118,6 +247,8 @@ class OPUCContext(CommonContext):
         self.mem = GameState(log=logger.info) if GameState else None
         self.slot_data: Dict = {}
         self.comments: Dict[Tuple[str, int], str] = {}
+        self.custom_recipes: Dict[Tuple[str, int], Tuple[int, List[Tuple[int, int]], bool]] = {}
+        self.ap_rows: Set[Tuple[str, int]] = set(DUMMY_CRAFTS)
         self.sent: Set[int] = set()
         self.goal_sent = False
         self.last_seen: Set[int] = set()
@@ -136,6 +267,7 @@ class OPUCContext(CommonContext):
         self.hp_prev: Optional[Dict[int, Tuple[int, int]]] = None   # Straw Hats' HP on the last pass (Death Link)
         self.owned_chars: Set[int] = set()           # Straw Hats you can play (start character + received)
         self.wardrobe_done = False                   # wardrobe spots switched on during this Sunny visit
+        self.cannon_asked = 0.0                      # last time the Wherever Cannon's event 10010 was requested
         self.go_prev = False                         # Game Over revive flag on the last pass (Death Link)
         self.passes = 0
         self.step = "starting"
@@ -163,6 +295,96 @@ class OPUCContext(CommonContext):
         self.repaired: Set[int] = set()              # leftover event items already cleaned up (logged once)
         self.arrival_scene = False                   # the first Sunny arrival scene (10070) is still to finish
         self.last_counter: Optional[int] = None      # hook frame counter on the last pass (game running?)
+        self.captions: List[Tuple[str, Tuple[float, float, float]]] = []   # on-screen messages still to show
+        self.msg = load_message_settings()                                  # /messages settings (own file)
+        # Gabri Energy tab / Energy Link (0.29.0)
+        self.gabri_view: Optional[Tuple[List[int], List[int]]] = None      # (max, current) per slot, from the game
+        self.energy_requests: List[Tuple[str, int, int]] = []              # (convert / withdraw, slot, Energy)
+        self.energy_pending: Dict[str, Tuple[int, int]] = {}               # Set tag -> (slot, Energy asked for)
+        self.energy_reserved = [0] * 6                                      # room held for withdrawals on the way
+        self.energy_incoming: List[Tuple[int, int, int]] = []              # (slot, Energy, asked) to add in game
+
+    # ---- Energy Link (Gabri Energy tab)
+    def energy_key(self) -> str:
+        return f"EnergyLink{self.team}"
+
+    def energy_link_on(self) -> bool:
+        return bool(self.slot) and bool(int(self.slot_data.get("energy_link", 0)))
+
+    def energy_bank(self) -> Optional[float]:
+        v = self.stored_data.get(self.energy_key()) if self.team is not None else None
+        if v is None:
+            v = self.current_energy_link_value
+        return v
+
+    def request_energy(self, op: str, slot: int, amount: int) -> None:
+        """From the tab's Convert / Withdraw buttons; done by the game loop (it owns the Dolphin connection)."""
+        if not self.energy_link_on():
+            logger.info("Energy Link is off for this slot (YAML option energy_link).")
+            return
+        if amount <= 0:
+            return
+        self.energy_requests.append((op, slot, amount))
+
+    def energy_set(self, value: float, tag: Optional[str] = None) -> None:
+        msg = {"cmd": "Set", "key": self.energy_key(), "default": 0,
+               "operations": [{"operation": "add", "value": value}]}
+        if tag:
+            msg.update(want_reply=True, tag=tag)
+            msg["operations"].append({"operation": "max", "value": 0})
+        Utils.async_start(self.send_msgs([msg]))
+
+    def energy_reply(self, args: dict) -> None:
+        """SetReply to one of our withdrawals: what was really taken (the bank may have had less)."""
+        slot, asked = self.energy_pending.pop(args["tag"])
+        rate = EL_JOULES[slot]
+        taken = max(0.0, float(args.get("original_value", 0) or 0) - float(args.get("value", 0) or 0))
+        energy = min(asked, int(taken // rate))
+        rest = taken - energy * rate
+        if rest > 0:
+            self.energy_set(rest)               # the part that doesn't make a whole Energy point goes back
+        self.energy_incoming.append((slot, energy, asked))
+
+    def queue_caption(self, text: str, flags: int) -> None:
+        if not self.mem:
+            return
+        rgb = caption_rgb(flags, bool(self.msg.get("colour", True)))
+        self.captions += [(page, rgb) for page in caption_pages(text)]
+        del self.captions[:-20]                          # never pile up more than a screenful of backlog
+
+    def on_print_json(self, args: dict) -> None:
+        super().on_print_json(args)
+        try:
+            st = self.msg
+            if args.get("type") != "ItemSend" or not self.mem or not self.slot or not st.get("on", True):
+                return
+            item = args.get("item")
+            if not isinstance(item, NetworkItem):
+                item = NetworkItem(*item)
+            receiver = args.get("receiving")
+            name = self.item_names.lookup_in_slot(item.item, receiver)
+            if item.player == self.slot and receiver != self.slot:
+                if not st.get("sent", True):
+                    return
+                text = f"Sent {name} to {self.player_names.get(receiver, 'someone')}"
+            elif receiver == self.slot:
+                d = ITEM_TABLE.get(ID_TO_ITEM.get(item.item, ""))
+                if not d or not st.get("received", True):
+                    return
+                if d.kind in CAPTION_KINDS:
+                    pass
+                elif d.kind in CAPTION_MOVE_KINDS:
+                    if not st.get("moves", False):
+                        return
+                elif not st.get("inventory", False):
+                    return
+                text = (f"Found {name}" if item.player == self.slot
+                        else f"Received {name} from {self.player_names.get(item.player, 'someone')}")
+            else:
+                return
+            self.queue_caption(text, item.flags)
+        except Exception as e:
+            logger.debug(f"on-screen message skipped: {e}")
 
     def on_deathlink(self, data: dict) -> None:
         super().on_deathlink(data)
@@ -186,9 +408,13 @@ class OPUCContext(CommonContext):
                 for row in rows:
                     if (room, row) not in CRAFT_LOCS or CRAFT_LOCS[(room, row)] not in self.server_locations:
                         self.comments[(room, row)] = NO_LOCATION_COMMENT
+            # Rows whose result is the Archipelago Item: key-item recipes and the random recipes (0.30.0)
+            self.custom_recipes = custom_recipes(self.slot_data)
+            self.ap_rows = set(DUMMY_CRAFTS) | {k for k, v in self.custom_recipes.items() if v[2]}
             # vanilla-result recipes: "also comes with ..." when they're a location here, otherwise "not a Location"
             dummy_rows = {(room, row) for room, rows in self.slot_data.get("dummy_recipes", {}).items() for row in rows}
-            for room in ("workshop", "kitchen", "pharmacy"):
+            dummy_rows |= self.ap_rows
+            for room in recipe_rooms(self.slot_data):
                 for row in range(32):
                     if (room, row) in dummy_rows or (room, row) in DUMMY_CRAFTS:
                         continue
@@ -201,9 +427,17 @@ class OPUCContext(CommonContext):
                 scout = []
                 for key, lid in CRAFT_LOCS.items():
                     if lid in self.server_locations:
-                        self.comments[key] = HIDDEN_AP_COMMENT if key in DUMMY_CRAFTS else HIDDEN_ALSO_COMMENT
+                        self.comments[key] = HIDDEN_AP_COMMENT if key in self.ap_rows else HIDDEN_ALSO_COMMENT
             if scout:
                 Utils.async_start(self.send_msgs([{"cmd": "LocationScouts", "locations": scout, "create_as_hint": 0}]))
+            # Energy Link: watch the team's bank (0.29.0)
+            self.energy_pending.clear()
+            self.energy_reserved = [0] * 6
+            if int(self.slot_data.get("energy_link", 0)):
+                Utils.async_start(self.send_msgs([{"cmd": "Get", "keys": [self.energy_key()]},
+                                                  {"cmd": "SetNotify", "keys": [self.energy_key()]}]))
+        elif cmd == "SetReply" and args.get("tag") in self.energy_pending:
+            self.energy_reply(args)
         elif cmd == "LocationInfo":
             by_id = {v: k for k, v in CRAFT_LOCS.items()}
             for item in args.get("locations", []):
@@ -212,7 +446,7 @@ class OPUCContext(CommonContext):
                     player = self.player_names.get(item.player, "someone")
                     name = self.item_names.lookup_in_slot(item.item, item.player)
                     kind = item_kind(item.flags)
-                    self.comments[key] = (placeholder_comment(player, name, kind) if key in DUMMY_CRAFTS
+                    self.comments[key] = (placeholder_comment(player, name, kind) if key in self.ap_rows
                                           else also_comes_comment(player, name, kind))
         super().on_package(cmd, args)    # Universal Tracker listens to the same messages
 
@@ -263,6 +497,11 @@ class OPUCContext(CommonContext):
             def build(self):
                 container = super().build()
                 try:
+                    from .gabri_tab import build_gabri_tab
+                    self.add_client_tab("Gabri Energy", build_gabri_tab(ctx))
+                except Exception as e:   # never let the extra tab stop the client from opening
+                    logger.warning(f"Gabri Energy tab not available: {e}")
+                try:
                     from kivy.clock import Clock
                     from kivy.metrics import dp
                     from kivy.uix.scrollview import ScrollView
@@ -280,26 +519,55 @@ class OPUCContext(CommonContext):
                     Clock.schedule_interval(lambda _dt: setattr(label, "text", ctx.armed_text()), 0.5)
                 except Exception as e:   # never let the extra tab stop the client from opening
                     logger.warning(f"Armed Items tab not available: {e}")
-                try:
-                    # Gabri Level counter to the right of the Connect button (user, 0.23.4; a fuller item tracker
-                    # with Straw Hats / tools may follow)
-                    from kivy.clock import Clock
-                    from kivy.metrics import dp
-                    try:
-                        from kivymd.uix.label import MDLabel as Label
-                    except ImportError:
-                        from kivy.uix.label import Label
-                    # one line: the bar is only ~20 dp tall inside its padding, a second line gets cut off
-                    gabri = Label(text=ctx.gabri_text(), size_hint_x=None, width=dp(150),
-                                  halign="center", valign="middle", shorten=False)
-                    gabri.bind(size=lambda w, v: setattr(w, "text_size", v))
-                    self.connect_layout.add_widget(gabri)
-                    Clock.schedule_interval(lambda _dt: setattr(gabri, "text", ctx.gabri_text()), 0.5)
-                except Exception as e:
-                    logger.warning(f"Gabri Level counter not available: {e}")
+                # (0.28.0: the Gabri Level counter by the Connect button is removed for now; user - that spot is
+                # kept for something else later. ctx.gabri_text() still works for /status-style use.)
                 return container
 
         return OPUCManager
+
+
+def energy_link_pass(ctx: OPUCContext, g: "GameState") -> None:
+    """Gabri Energy tab (0.29.0): refresh the meters, then carry out Convert / Withdraw requests and add Energy that
+    arrived from the bank. Runs in a settled game (save loaded, this seed's)."""
+    ctx.gabri_view = g.gabri_energy()
+    if not ctx.energy_link_on():
+        ctx.energy_requests.clear()
+        return
+    while ctx.energy_incoming:
+        slot, energy, asked = ctx.energy_incoming.pop(0)
+        ctx.energy_reserved[slot] = max(0, ctx.energy_reserved[slot] - asked)
+        added = g.add_gabri_energy(slot, energy) if energy > 0 else 0
+        if energy - added > 0:                       # no room after all: back into the bank, no cut
+            ctx.energy_set((energy - added) * EL_JOULES[slot])
+        if added:
+            logger.info(f"Energy Link: withdrew {added} {EL_NAMES[slot]} Energy.")
+        elif energy == 0:
+            logger.info("Energy Link: the bank is empty.")
+    while ctx.energy_requests:
+        op, slot, amount = ctx.energy_requests.pop(0)
+        view = g.gabri_energy()
+        if not view:
+            return
+        mx, cur = view
+        if op == "convert":
+            taken = -g.add_gabri_energy(slot, -min(amount, cur[slot]))
+            if taken > 0:
+                ctx.energy_set(int(taken * EL_JOULES[slot] * EL_KEEP))
+                logger.info(f"Energy Link: converted {taken} {EL_NAMES[slot]} Energy "
+                            f"({Utils.format_SI_prefix(int(taken * EL_JOULES[slot] * EL_KEEP))}J into the bank).")
+            else:
+                logger.info(f"Energy Link: no {EL_NAMES[slot]} Energy to convert.")
+        else:
+            room = mx[slot] - cur[slot] - ctx.energy_reserved[slot]
+            amount = min(amount, room)
+            if amount <= 0:
+                logger.info(f"Energy Link: {EL_NAMES[slot]} Energy is already at its cap.")
+                continue
+            tag = str(uuid.uuid4())
+            ctx.energy_pending[tag] = (slot, amount)
+            ctx.energy_reserved[slot] += amount
+            ctx.energy_set(-amount * EL_JOULES[slot], tag)
+    ctx.gabri_view = g.gabri_energy()
 
 
 def received_counts(ctx: OPUCContext) -> Counter:
@@ -329,7 +597,10 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
             continue
         unlock_opt, _a, ci = ROOM_OPTIONS[d.data]
         mode = int(sd.get(unlock_opt, 1))
-        if mode == 4:                     # start_with (Kitchen / Pharmacy)
+        if d.data == "franky":            # Franky's Supplies (0.30.0): 0 start_with, 1 item, 2 Franky, 3 both
+            ok = franky_on(sd) and (mode == 0 or ((mode == 2 or bool(have[d.name]))
+                                                  and (mode == 1 or ci in owned_chars)))
+        elif mode == 4:                     # start_with (Kitchen / Pharmacy)
             ok = True
         elif mode == 0:                   # Workshop start_with; Kitchen / Pharmacy vanilla
             ok = d.data == "workshop" or g.chapter() >= 3
@@ -348,11 +619,21 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
     g.set_islands({1: True, **{n: (log.get(n, False) if n in by_item else vanilla[n]) for n in vanilla}})
     # Art of Development / Cooking / Compounding wait for their owner when that option is on
     art_held = {ci for _u, art_opt, ci in ROOM_OPTIONS.values() if int(sd.get(art_opt, 0)) and ci not in owned_chars}
-    g.set_gabri(have["Progressive Gabri Level"])
+    if int(sd.get("gabri_energy_items", 0)):        # one item per colour bar (0.28.0)
+        mode = int(sd.get("gabri_level_items", 10))
+        start = int(sd.get("starting_gabri_energy", 1))           # 0.28.0 - 0.29.x seeds: 1 Blue bar
+        g.set_gabri_bars([gabri_colour_bars(ci, have[item], mode, start) for ci, item in enumerate(GABRI_COLOUR_ITEMS)])
+    else:
+        g.set_gabri(have["Progressive Gabri Level"])
     # Build Sites (x11-x16) also wait for Franky with franky_required_for_build_sites
     franky_ok = not int(sd.get("franky_required_for_build_sites", 0)) or 7 in owned_chars
-    g.set_shrine_locks({sid for name, sid in SHRINE_ACCESS.items()
-                        if have[name] and (sid not in BUILD_SITE_IDS or franky_ok)})
+    unlocked = {sid for name, sid in SHRINE_ACCESS.items()
+                if have[name] and (sid not in BUILD_SITE_IDS or franky_ok)}
+    # Extra Final Door Requirement (0.31.0): The Final Door also waits for the bosses
+    door_flags = [LOCATION_TABLE[n].check[1] for n in final_door_bosses(int(sd.get("extra_final_door_requirement", 0)))]
+    if door_flags and 500 in unlocked and len(g.script_flags(door_flags)) < len(door_flags):
+        unlocked.discard(500)
+    g.set_shrine_locks(unlocked)
     g.set_monuments(not int(sd.get("robin_required_for_monuments", 0)) or 6 in owned_chars)
     maps_held = bool(int(sd.get("nami_required_for_maps", 0))) and 4 not in owned_chars
     sunny = sunny_flags == {SUNNY_FLAG, SUNNY_SCENE}
@@ -361,7 +642,7 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
     armed: List[Tuple[str, str]] = []
     if have["Pickaxe"] and not sunny:
         armed.append(("Pickaxe", "Waiting for Thousand Sunny entry (and the crew's scene there)"))
-    for room in ("workshop", "kitchen", "pharmacy"):
+    for room in recipe_rooms(sd):
         ci = ROOM_OPTIONS[room][2]
         k = have[ROOM_ART[room]]
         if k and ci in art_held:
@@ -443,7 +724,7 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
     if g.settled():
         new_scan = g.ensure_scan()
         if new_scan:
-            g.strip_fragment_drops(list(ctx.slot_data.get("vacuum_orbs", [85] * 5)))
+            g.strip_fragment_drops(dust_spot_items(ctx.slot_data))
         g.set_blue_orb_spot(70 if int(ctx.slot_data.get("blue_orb_spot_gives_iron_ore", 0)) else 81)
         sd = ctx.slot_data
         better_dig = sd.get("better_random_dig_item_rates", sd.get("higher_random_dig_chance", 0))
@@ -457,12 +738,20 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
             g.set_gunpowder_drops(int(rate))
         if int(ctx.slot_data.get("better_plant_drop_rates", 0)):
             g.set_plant_drops()
+        if int(sd.get("expanded_storage", 0)):
+            g.manage_storage()                         # 45 Storage slots (0.32.0)
         if int(ctx.slot_data.get("equalise_fish_rates", 0)):
             g.set_fish_rates()
         if int(ctx.slot_data.get("quick_recipes", 0)):
             g.set_quick_recipes()
-        g.set_max_stacks(craft_max=bool(int(sd.get("stack_craftables_make_max_copies", 0))))   # 99 stacks
+        g.set_max_stacks(craft_max=bool(int(sd.get("stack_craftables_make_max_copies", 0))))   # 100 stacks
         g.install_hook()
+        if ctx.captions and g.caption_ready():          # on-screen messages: one hand-over per pass, the game queues
+            text, rgb = ctx.captions.pop(0)
+            st = ctx.msg
+            g.show_caption(text, rgb, frames=int(float(st["time"]) * 60), scale=float(st["scale"]),
+                           border=float(st["outline"]), offset=caption_offset(st["position"]))
+        energy_link_pass(ctx, g)
         changed = g.write_tables(moves, abilities) | g.write_coop(coop)
         if changed or new_scan:
             ctx.unlock_wanted = True        # asked for once the game is quiet (paced_events)
@@ -491,6 +780,7 @@ def apply_items(ctx: OPUCContext, g: "GameState", have: Counter) -> None:
     paced_events(ctx, g)
     deliver(ctx, g, key_items)
     wardrobe(ctx, g, have)
+    wherever_cannon(ctx, g, have)
     ctx.armed_traps = deliver_traps(ctx, g)
     death_link(ctx, g)
 
@@ -741,6 +1031,27 @@ def wardrobe(ctx: "OPUCContext", g: "GameState", have) -> None:
         ctx.wardrobe_done = True
 
 
+# The Wherever Cannon as an item (0.34.0, option wherever_cannon_unlock own_item / start_with). Vanilla: sailing back to
+# Wooded Isle after Gorge Isle runs event 10009 (next_island script: Franky's message, then FieldGroupEnable(10010) =
+# the build site's touch spot and FieldPartsEnable(39557) = the site on the deck) unless 10009 has already run.
+# Building it runs 10010: FieldGroupEnable(10010, false), FieldPartsEnable(39557, false), FieldGroupEnable(10991) =
+# the cannon's touch spot, a camera pan to the cannon, Franky's message (cev_sny_001) and tutorial 18.
+CANNON_SITE_EVENT, CANNON_BUILT_EVENT = 10009, 10010
+
+
+def wherever_cannon(ctx: "OPUCContext", g: "GameState", have) -> None:
+    """With the cannon as an item the build site never appears (10009 marked done); once the item is in, the game's
+    own build-finished event 10010 runs on the Sunny (asked again after 30 s until its end flag is set)."""
+    if not int(ctx.slot_data.get("wherever_cannon_unlock", 0)) or not g.settled(3):
+        return
+    g.set_script_flag(CANNON_SITE_EVENT)
+    if not have["The Wherever Cannon"] or g.script_flags([CANNON_BUILT_EVENT]) or g.on_sunny() is not True:
+        return
+    now = time.monotonic()
+    if now - ctx.cannon_asked > 30 and g.request_script(CANNON_BUILT_EVENT):
+        ctx.cannon_asked = now
+
+
 def death_link(ctx: "OPUCContext", g: "GameState") -> None:
     """Death Link: a Straw Hat's HP reaching 0 sends a death (and, with falling_death_link, a fall into the abyss /
     deep water: [obj + 0x9C] & 0x01000000 turning on). A received death gives the current Straw Hat a fatal hit
@@ -771,7 +1082,7 @@ def death_link(ctx: "OPUCContext", g: "GameState") -> None:
     ctx.hp_prev = hp
     ctx.fallen_prev = down
     ctx.go_prev = go
-    if ctx.death_pending and g.on_sunny() is False and quiet_for(ctx, 1.0) and g.can_trap() and g.death_hit():   # never on the Sunny
+    if ctx.death_pending and g.on_sunny() is False and quiet_for(ctx, 0) and g.can_trap() and g.death_hit():   # never on the Sunny
         logger.info(f"Death Link from {ctx.death_pending}: your Straw Hat takes a fatal hit.")
         ctx.death_pending = None
         ctx.death_applied_at = now
@@ -827,7 +1138,8 @@ def deliver_traps(ctx: "OPUCContext", g: "GameState") -> List[Tuple[str, str]]:
     # 0.22.1); other traps play past them. None = not known yet: Burn waits too.
     waiting = [i for i in range(ctx.traps_done, len(traps)) if i not in ctx.traps_ahead]
     playable = [i for i in waiting if traps[i] != "Burn Trap" or sunny is False]
-    if st is None and playable and g.settled() and quiet_for(ctx, 1.0) and g.can_trap():
+    # 0.25.19 (user): no quiet wait, just the game running and idle right now plus the can_trap safety checks
+    if st is None and playable and g.settled() and quiet_for(ctx, 0) and g.can_trap():
         i = playable[0]
         name = traps[i]
         ms = TRAP_TIME_MS.get(name, TRAP_MS)
@@ -891,7 +1203,7 @@ def read_checks(ctx: OPUCContext, g: "GameState") -> Set[int]:
         ctx.finished_game = True
     found |= {CHEST_LOCS[c] for c in g.opened_chests(set(CHEST_LOCS))}
     found |= {SHRINE_LOCS[s] for s in g.activated_shrines() if s in SHRINE_LOCS}
-    found |= {CRAFT_LOCS[k] for k in g.crafted() if k in CRAFT_LOCS}
+    found |= {CRAFT_LOCS[k] for k in g.crafted(recipe_rooms(ctx.slot_data)) if k in CRAFT_LOCS}
     # first catch of a fish / creature: its "ever obtained" bit (only locations that exist in this seed)
     in_seed = ctx.server_locations
     # The Database records every fish / creature caught (Sea Kings too, which never reach the bag as themselves;
@@ -899,6 +1211,8 @@ def read_checks(ctx: OPUCContext, g: "GameState") -> Set[int]:
     caught = g.database_caught()
     found |= {lid for gid, lid in CATCH_LOCS.items()
               if lid in in_seed and (gid in caught if caught is not None else g.found(gid))}
+    # Materialsanity: first pickup of a material = its "ever obtained" bit
+    found |= {lid for gid, lid in MATERIAL_LOCS.items() if lid in in_seed and g.found(gid)}
     levels = g.move_levels()
     for lid, ci, mid, lv in MOVE_LOCS:
         if levels.get((ci, mid), 0) >= lv:
@@ -961,10 +1275,14 @@ async def game_loop(ctx: OPUCContext) -> None:
                                    "items are given for it: go back to the title screen (reset) and load your save "
                                    "again. Next time, connect the client at the title screen before loading.")
             g.apply_patches(ctx.slot_data)
+            if int(ctx.slot_data.get("expanded_storage", 0)):
+                g.set_storage_count()                  # before the session's lists are built (title screen)
+            g.check_low_code()
             # Starting Costumes: built into the Straw Hats at creation (anyone in the default costume / style)
             g.set_costume_table(ctx.slot_data.get("starting_costumes"))
             g.rename_placeholder()
             g.set_iron_scrap_gold(bool(int(ctx.slot_data.get("iron_scrap_gives_gold_energy", 0))))
+            g.set_coin_gold()                     # Old Gold Coin: 10 Gold Energy instead of 100 (0.30.1)
             ctx.step = "table search"
             if g.settled() and g.needs_scan():
                 await asyncio.to_thread(g.do_scan)       # finds the move / ability / enemy tables (slow)
@@ -1012,9 +1330,16 @@ async def game_loop(ctx: OPUCContext) -> None:
             else:
                 veiled = set()
             g.clear_idea_callbacks()
-            g.setup_recipes(ctx.comments, hidden, veiled)
+            g.setup_recipes(ctx.comments, hidden, veiled, getattr(ctx, "custom_recipes", None),
+                            recipe_rooms(ctx.slot_data))
+            if franky_on(ctx.slot_data):
+                g.rename_supply()                      # Supply -> "Art of Supplying"
+                g.set_fish_junk_coins()                # fishing junk -> Old Gold Coins (0.31.0)
+                g.set_gen_cells(g.ANEMONE_ROW, g.BLACK_ORB, new_item=g.OLD_GOLD_COIN_ITEM)   # Sea Anemone (0.33.4)
+            if int(ctx.slot_data.get("easier_fish", 0)):
+                g.easier_fish()
             if g.settled():
-                g.strip_fragment_drops(list(ctx.slot_data.get("vacuum_orbs", [85] * 5)))
+                g.strip_fragment_drops(dust_spot_items(ctx.slot_data))
             ctx.step = "reading checks"
             # Only once a save has been loaded for a few seconds, and only checks seen on two passes in a row: while
             # a save loads, flag sections and move tables can hold stale or half-written data (public 0.15.0

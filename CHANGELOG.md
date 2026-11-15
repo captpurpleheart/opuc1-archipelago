@@ -4,7 +4,7 @@
 A small hotfix for 1.0.0. No new YAML options: 1.0.0 seeds and YAMLs work as they are, but generate again to get the logic fix.
 
 - **FIX** - The Wherever Cannon's unlock scene played twice when "The Wherever Cannon" was received before reaching the Thousand Sunny for the first time. It now plays once, and starts sooner once things are quiet.
-- **LOGIC UPDATE** - Gorge Isle Part 1 is no longer a Wood source for crafting. Its dead trees share a one-time group with the nearby rock path and grass: breaking anything there and leaving the island removes the whole group for good. Crafting recipes that need Wood now count Gorge Isle Part 3 (after Kuro / Krieg, by the Build Site to Part 4), where the trees grow back, or the Cave Isle. "Got Wood" (Materialsanity) can still come from Gorge Isle Part 1.
+- **LOGIC UPDATE** - Gorge Isle Part 1 is no longer a Wood source for crafting. Its dead trees share a one-time group with the nearby rock path and grass: breaking anything there and leaving the island removes the whole group for good. Crafting recipes that need Wood now count Gorge Isle Part 3 (after Kuro / Krieg, by the Build Site to Part 4), where the trees grow back, or the Cave Isle. "Got Wood" (Materialsanity) follows the same rule, since touching the grass there without breaking a tree loses the trees too.
 
 ## Version v1.0.0 - First Feature Complete Build
 This week's update is... **SUPER!** :star:

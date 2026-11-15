@@ -264,7 +264,8 @@ SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     "Red Fruit": [(G1, always)],
     "Wilted Carrot": [(G1, always)],       # Zombie Squirrel drop
     # Gorge Isle Part 1's dead trees are a one-time group (Shrine 1 patch, docs/gorge_layout.md): the first trees
-    # that come back are in Part 3, by the build site to Part 4 (user, 1.0.2). "Got Wood" still counts Part 1.
+    # that come back are in Part 3, by the build site to Part 4 (user, 1.0.2). "Got Wood" doesn't count Part 1
+    # either (1.0.3): touching the grass there without breaking a tree loses the trees for good.
     "Wood": [(G3, always), (C2, always)],
     "Golden Egg": [(G2, pickaxe), (I1, net)],      # Iceberg: Flying Penguin drop (net)
     "Explosive Rock Fragment": [(G4, always), (C2, always)],
@@ -547,7 +548,6 @@ FIRST_PICKUP: Dict[str, List[Tuple[str, Rule]]] = {
     "Pure Iron Ore": [(P1, pickaxe), (P2, pickaxe)],
     # any fire attack, including Flame Powder dropped by Fire Hercules (0.33.2)
     "Ashes": [(P1, fire_attack), (P2, fire_attack), (G1, fire_attack), (I1, fire_attack), (C1, fire_attack)],
-    "Wood": [(G1, always)],     # Gorge Isle Part 1's one-time dead trees (1.0.2)
 }
 
 

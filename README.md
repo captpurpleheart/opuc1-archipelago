@@ -6,7 +6,7 @@ Treasure Beneath the Waves** (Wii, PAL `ROUPAF`).
 > **Feature complete.** Every island is in: the **Thousand Sunny, Wooded Isle, Gorge Isle, Iceberg Isle, Cave Isle
 > and the final island (Central Isle)**. Please report bugs!
 >
-> Latest: **1.0.0** (First Feature Complete Build) - see [CHANGELOG.md](CHANGELOG.md).
+> Latest: **1.0.3** (hotfix for 1.0.0, the First Feature Complete Build) - see [CHANGELOG.md](CHANGELOG.md).
 
 ## What's randomized
 

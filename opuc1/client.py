@@ -267,7 +267,7 @@ class OPUCContext(CommonContext):
         self.hp_prev: Optional[Dict[int, Tuple[int, int]]] = None   # Straw Hats' HP on the last pass (Death Link)
         self.owned_chars: Set[int] = set()           # Straw Hats you can play (start character + received)
         self.wardrobe_done = False                   # wardrobe spots switched on during this Sunny visit
-        self.cannon_asked = 0.0                      # last time the Wherever Cannon's event 10010 was requested
+        self.cannon_asked = -1e9                     # last time the Wherever Cannon's event 10010 was requested
         self.go_prev = False                         # Game Over revive flag on the last pass (Death Link)
         self.passes = 0
         self.step = "starting"
@@ -1041,15 +1041,21 @@ CANNON_SITE_EVENT, CANNON_BUILT_EVENT = 10009, 10010
 
 def wherever_cannon(ctx: "OPUCContext", g: "GameState", have) -> None:
     """With the cannon as an item the build site never appears (10009 marked done); once the item is in, the game's
-    own build-finished event 10010 runs on the Sunny (asked again after 30 s until its end flag is set)."""
+    own build-finished event 10010 runs on the Sunny.
+    1.0.1 (user: received before reaching the Sunny, the scene played twice): the request used to be repeated 30 s
+    after it was made, counted from the request, not from the scene. The hook held it through the first-time Sunny
+    scene, so the 30 s ran out while 10010 was still playing (its end flag is only set when it finishes) and a second
+    copy was queued. Now it's only asked (or asked again) after 0.5 s of quiet (1.0.3; 3 s in 1.0.1) - no event running, so a 10010 that is
+    still playing or waiting in the hook never gets a second request - and at most once a minute."""
     if not int(ctx.slot_data.get("wherever_cannon_unlock", 0)) or not g.settled(3):
         return
     g.set_script_flag(CANNON_SITE_EVENT)
     if not have["The Wherever Cannon"] or g.script_flags([CANNON_BUILT_EVENT]) or g.on_sunny() is not True:
         return
     now = time.monotonic()
-    if now - ctx.cannon_asked > 30 and g.request_script(CANNON_BUILT_EVENT):
+    if now - ctx.cannon_asked > 60 and quiet_for(ctx, 0.5) and g.request_script(CANNON_BUILT_EVENT):
         ctx.cannon_asked = now
+        used_quiet(ctx, event=True)
 
 
 def death_link(ctx: "OPUCContext", g: "GameState") -> None:

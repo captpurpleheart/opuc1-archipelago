@@ -32,6 +32,8 @@ from .data import (GABRI_COLOUR_ITEMS, gabri_colour_bars, RETIRED_TRAPS, ROD_GRA
                    MAP_FRAGMENT_GROUPS, BUILD_SITE_IDS, FRANKY_TRADES, POOL_ITEM_IDS, ROOM_ITEM, LOCATION_TABLE,
                    final_door_bosses)
 
+ITEM_NAMES_BY_ID = {i: n for n, i in ITEM_IDS.items()}
+
 try:
     from .game_state import (GO_REQ, BAG_CAPACITY, HIDDEN_ALSO_COMMENT, HIDDEN_AP_COMMENT, NO_LOCATION_COMMENT, GameState,
                              also_comes_comment, placeholder_comment, rod_level_byte, item_kind, caption_pages,
@@ -268,6 +270,9 @@ class OPUCContext(CommonContext):
         self.owned_chars: Set[int] = set()           # Straw Hats you can play (start character + received)
         self.wardrobe_done = False                   # wardrobe spots switched on during this Sunny visit
         self.cannon_asked = -1e9                     # last time the Wherever Cannon's event 10010 was requested
+        self.map_sent = None                         # field index last written for the PopTracker map (0.1.0 tracker)
+        self.tracker_logic = None                    # PopTracker logic (tracker_logic.TrackerLogic), built on Connected
+        self.logic_sent = None                       # last set of in-logic location ids written for the tracker
         self.go_prev = False                         # Game Over revive flag on the last pass (Death Link)
         self.passes = 0
         self.step = "starting"
@@ -396,8 +401,34 @@ class OPUCContext(CommonContext):
         await self.get_username()
         await self.send_connect()
 
+    def update_tracker_logic(self) -> None:
+        """PopTracker pack: the locations the items received so far reach, by this world's own rules, in data storage
+        key opuc1_logic_<team>_<slot> (written when it changes)."""
+        if self.tracker_logic is None or self.slot is None:
+            return
+        names = [ITEM_NAMES_BY_ID.get(i.item) for i in self.items_received]
+        try:
+            reach = self.tracker_logic.reachable(n for n in names if n)
+        except Exception:
+            logger.exception("Tracker logic failed; the PopTracker map won't show logic this session.")
+            self.tracker_logic = None
+            return
+        if reach == self.logic_sent:
+            return
+        self.logic_sent = reach
+        Utils.async_start(self.send_msgs([{"cmd": "Set", "key": f"opuc1_logic_{self.team}_{self.slot}", "default": [],
+                                           "want_reply": False,
+                                           "operations": [{"operation": "replace", "value": sorted(reach)}]}]))
+
     def on_package(self, cmd: str, args: dict):
+        if cmd == "ReceivedItems":
+            self.update_tracker_logic()
         if cmd == "Connected":
+            self.map_sent = None                     # write the current island again for the PopTracker map
+            from .tracker_logic import build as build_tracker_logic
+            self.tracker_logic = build_tracker_logic(args.get("slot_data", {}))
+            self.logic_sent = None
+            self.update_tracker_logic()
             self.slot_data = args.get("slot_data", {})
             Utils.async_start(self.update_death_link(bool(int(self.slot_data.get("death_link", 0)))))
             self.sent = set(args.get("checked_locations", []))
@@ -1039,6 +1070,23 @@ def wardrobe(ctx: "OPUCContext", g: "GameState", have) -> None:
 CANNON_SITE_EVENT, CANNON_BUILT_EVENT = 10009, 10010
 
 
+def report_map(ctx: "OPUCContext", g: "GameState") -> None:
+    """PopTracker pack: the current field (0 Thousand Sunny, 1 Wooded, 2 Gorge, 3 Iceberg, 4 Cave, 5 Central Isle),
+    + 100 on the cave page of the map (1.0.7), in data storage key opuc1_map_<team>_<slot>, so the tracker can show
+    that map. Written when it changes."""
+    if not g.in_game():
+        return
+    fid = g.field_id()
+    if fid is None or not 0 <= fid < 32:
+        return
+    fid += 100 * g.map_layer()
+    if fid == ctx.map_sent:
+        return
+    ctx.map_sent = fid
+    Utils.async_start(ctx.send_msgs([{"cmd": "Set", "key": f"opuc1_map_{ctx.team}_{ctx.slot}", "default": 0,
+                                      "want_reply": False, "operations": [{"operation": "replace", "value": fid}]}]))
+
+
 def wherever_cannon(ctx: "OPUCContext", g: "GameState", have) -> None:
     """With the cannon as an item the build site never appears (10009 marked done); once the item is in, the game's
     own build-finished event 10010 runs on the Sunny.
@@ -1289,6 +1337,7 @@ async def game_loop(ctx: OPUCContext) -> None:
             g.rename_placeholder()
             g.set_iron_scrap_gold(bool(int(ctx.slot_data.get("iron_scrap_gives_gold_energy", 0))))
             g.set_coin_gold()                     # Old Gold Coin: 10 Gold Energy instead of 100 (0.30.1)
+            report_map(ctx, g)                    # PopTracker: current island
             ctx.step = "table search"
             if g.settled() and g.needs_scan():
                 await asyncio.to_thread(g.do_scan)       # finds the move / ability / enemy tables (slow)

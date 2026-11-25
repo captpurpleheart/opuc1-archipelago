@@ -6,7 +6,7 @@ Treasure Beneath the Waves** (Wii, PAL `ROUPAF`).
 > **Feature complete.** Every island is in: the **Thousand Sunny, Wooded Isle, Gorge Isle, Iceberg Isle, Cave Isle
 > and the final island (Central Isle)**. Please report bugs!
 >
-> Latest: **1.0.3** (hotfix for 1.0.0, the First Feature Complete Build) - see [CHANGELOG.md](CHANGELOG.md).
+> Latest: **1.1.0** (PopTracker Map Tracker, logic fixes) - see [CHANGELOG.md](CHANGELOG.md).
 
 ## What's randomized
 
@@ -60,6 +60,8 @@ Other quality-of-life changes the client makes:
 - One Piece Unlimited Cruise Part 1, **European (PAL) version, game ID `ROUPAF`**, unmodified. Any disc format
   works (ISO, WBFS, RVZ, etc). The Japanese versions are **not** supported.
 - The `dolphin-memory-engine` Python package, should be apart of Archipelago by default, but just in case.
+- Optional: [PopTracker](https://github.com/black-sliver/PopTracker/releases) (0.30.4 or newer) with the
+  `OPUC1-AP-Tracker.zip` pack from the Releases page - see [PopTracker](#poptracker) below.
 - Optional: [Universal Tracker](https://github.com/FarisTheAncient/Archipelago/releases) - the client uses it
   automatically when installed.
 
@@ -81,6 +83,24 @@ game, start it again (client at the title screen) and load.
 
 If the client reports that dolphin-memory-engine is missing, install it into the Python that runs Archipelago:
 `pip install dolphin-memory-engine`.
+
+## PopTracker
+
+`OPUC1-AP-Tracker.zip` (Releases page) is a map tracker for PopTracker. Put the zip in PopTracker's `packs` folder
+as it is, open it ("Map Tracker") and connect with the AP button to the same room and slot as the game.
+
+- **Items** along the bottom: the Straw Hats, islands, crafting rooms (with their Art level), tools and key items
+  (the Fishing Rod shows its rod and line levels), the six Gabri Energy caps, every Shrine / Build Site access
+  (and when it's done), and the bosses defeated.
+- **Maps** for the Thousand Sunny and every island (Wooded Isle and Central Isle with their cave maps), with a pin
+  for every chest, boss, ambush, shrine, build site, Stone Monument, event, crafting recipe (by Art level), fishing
+  spot (with each fish's distance), creature net / trap spot and Materialsanity pickup.
+- **Logic:** the One Piece Unlimited Cruise 1 Client works it out with the apworld's own rules and sends it to the
+  tracker, so keep the client connected (without it every pin shows as reachable).
+- **Auto map:** the tracker follows the island you're on, including the Wooded Isle / Central Isle caves (needs the
+  client).
+- **Settings:** show / hide Prologue pins, island pins, fishing spots, creature net spots and trap spots, and turn
+  the auto map off. Prologue pins switch to the island pins by themselves once the Prologue is done.
 
 ## Options
 

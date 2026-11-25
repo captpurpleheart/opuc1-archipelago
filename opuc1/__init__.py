@@ -582,7 +582,7 @@ class OPUCWorld(World):
                     rule(loc.name, R.got_material(loc.name[4:]))
 
         for name, thing in self.catch_locations.items():
-            rule(name, R.has_material(thing))
+            rule(name, R.caught(thing) if name.startswith("Creatures - ") else R.has_material(thing))
             unimportant = (o.fishsanity.value if name.startswith("Fishing") else o.creaturesanity.value) == 2
             if unimportant:
                 add_item_rule(mw.get_location(name, p), lambda item: not item.advancement)

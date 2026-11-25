@@ -1,5 +1,34 @@
 # Changelog
 
+## Version v1.1.0 - PopTracker Map Tracker
+A new PopTracker pack, plus logic fixes from test runs. No new YAML options: 1.0.x YAMLs work as they are, but
+generate again to get the logic fixes.
+
+### **PopTracker Map Tracker**
+Download `OPUC1-AP-Tracker.zip` alongside the apworld and put it in PopTracker's `packs` folder.
+- An item bar with every key item, the crafting rooms and their Art levels, the Fishing Rod's rod and line levels,
+  the Gabri Energy caps, every Shrine / Build Site access, and the bosses you've defeated.
+- Maps of the Thousand Sunny and every island (plus the Wooded Isle and Central Isle caves), with pins for chests,
+  bosses, ambushes, shrines, build sites, Stone Monuments, events, crafting recipes by Art level, fishing spots
+  (with each fish's distance), creature net and trap spots, and Materialsanity.
+- Logic comes straight from the apworld: the OPUC1 Client works out which locations are in logic and sends it to
+  the tracker, so the map always matches the apworld.
+- The map follows you around, switching islands and even the cave maps on its own.
+- Settings to show / hide Prologue, island, fishing, net and trap pins, and to turn the auto map off.
+
+### **Logic Fixes**
+- **FIX** - Zoro's Single Sword Flying Dragon Blaze never counted as a fire attack, so it didn't open Ashes, the
+  Iceberg Isle Ice Rock paths or anything else that needs fire.
+- **FIX** - Rod / line levels are now counted the way the game shows them (they start at Level 1). Elephant Tuna
+  needs rod Lv 5 and line Lv 11, Balloon Catfish rod Lv 5, and the Whopper / Sea King rods count from the upgrade
+  that actually gives them (10 / 20 upgrades) for the Sharks and Sea Kings.
+- **LOGIC UPDATE** - "Creatures - Mole" is catch only: a Mole traded at Franky's Supplies doesn't count as caught
+  (it still counts for the Obstructed Path Build Sites).
+- **LOGIC UPDATE** - Flame Powder only counts as a crafting ingredient when it can be compounded (Chopper's
+  Pharmacy), not from Fire Hercules drops. Dropped Flame Powder still counts as a fire attack.
+- **LOGIC UPDATE** - Mystery Mushroom can now come from the Tempest Mice by Rampaging Chopper (Iceberg Isle
+  Obstructed Path 2), caught with the Bug-Catcher Net.
+
 ## Version v1.0.3 - Hotfix
 A small hotfix for 1.0.0. No new YAML options: 1.0.0 seeds and YAMLs work as they are, but generate again to get the logic fix.
 

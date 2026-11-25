@@ -443,6 +443,42 @@ def caption_code() -> List[int]:
     return c
 
 
+# ---- map layer (1.0.7): which map page the pause menu would show (island / cave), for the PopTracker map -----------
+# The map menu picks its page with 0x801D3CF4: field manager [0x8068A218] -> its layer-region object
+# [fm + 0x28 + 4 * field index]; 0x800CBF88(region obj, &player position, f1 = 1.0) walks the object's region list
+# (+0xD8; on Wooded Isle two "cave floor" meshes, each with a height margin of 10 at +0x14), casts a ray down at the
+# player's x / z and returns bit 0x08000000 of the region's flags (+0x10) when the player is within the margin above
+# that floor: 1 = cave page. Player = [0x8068A628], position at +0x1B4. The hook stub calls LAYER_AT every frame and
+# it writes the answer to LAYER_BYTE (0 also when there's no field / player / region object).
+LAYER_AT, LAYER_BYTE, LAYER_ONE = 0x80001A00, 0x80001AE0, 0x80001AE4
+LAYER_FUNC, FIELD_MGR_ADDR, PLAYER_PTR_ADDR = 0x800CBF88, 0x8068A218, 0x8068A628
+
+
+def layer_code() -> List[int]:
+    at = LAYER_AT
+    c = [0x9421FFF0, 0x7C0802A6, 0x90010014,                   # 0-2 frame
+         li(5, 0),                                             # 3 answer 0 unless worked out
+         lis(3, 0x8069), lwz(3, FIELD_MGR_ADDR - 0x80690000, 3),
+         cmpwi(3, 0), 0,                                       # 7 beq store
+         lwz(0, 0x20, 3), 0x28000010,                          # 9 cmplwi r0, 16
+         0,                                                    # 10 bgt store
+         0x5400103A, 0x7C630214, lwz(3, 0x28, 3),              # slwi r0,r0,2; add r3,r3,r0; lwz r3,40(r3)
+         cmpwi(3, 0), 0,                                       # 15 beq store
+         lis(4, 0x8069), lwz(4, PLAYER_PTR_ADDR - 0x80690000, 4),
+         cmpwi(4, 0), 0,                                       # 19 beq store
+         addi(4, 4, 0x1B4),
+         lis(12, 0x8000), 0xC02C0000 | (LAYER_ONE & 0xFFFF),   # lfs f1, ONE(r12)
+         0,                                                    # 23 bl LAYER_FUNC
+         0x7C651B78]                                           # mr r5, r3
+    store = len(c)
+    c += [lis(12, 0x8000), stb(5, LAYER_BYTE & 0xFFFF, 12),
+          0x80010014, 0x7C0803A6, 0x38210010, 0x4E800020]
+    for i, cond in ((7, 0x41820000), (10, 0x41810000), (15, 0x41820000), (19, 0x41820000)):
+        c[i] = cond | ((store - i) * 4)
+    c[23] = bl(at + 23 * 4, LAYER_FUNC)
+    return c
+
+
 def caption_width(text: str) -> float:
     return sum(CAPTION_WIDTHS.get(ch, 8.0) for ch in text)
 
@@ -1588,6 +1624,11 @@ class GameState:
         if self.rd(CAPTION_AT, len(cc)) != cc:
             self.w(CAPTION_FLAG, b"\0")
             self.w(CAPTION_AT, cc)
+        lc = b"".join(struct.pack(">I", x) for x in layer_code())
+        if self.rd(LAYER_AT, len(lc)) != lc:
+            self.w(LAYER_ONE, struct.pack(">f", 1.0))
+            self.w(LAYER_BYTE, b"\0")
+            self.w(LAYER_AT, lc)
         wc = b"".join(struct.pack(">I", x) for x in wardrobe_code())
         if self.rd(WARDROBE_AT, len(wc)) != wc:
             self.w(WARDROBE_AT, wc)
@@ -1721,6 +1762,7 @@ class GameState:
         for x in (0x3C808000, 0x88A42F21, 0x38A50001, 0x98A42F21):   # call counter
             emit(x)
         blto(CAPTION_AT)                                   # on-screen AP message, if one is waiting (any time)
+        blto(LAYER_AT)                                     # map layer (island / cave page) for the PopTracker map
         emit(0x3C808000)                                   # lis r4, 0x8000 again (the routine uses r4)
         # Give an item the way chests do, when the client asks (flag 0x80002F22, item 0x80002F24,
         # count 0x80002F28, item handle buffer 0x80002F30): ctor 0x800F8934, give 0x80040B4C(mgr, &h, n, 1, 1)
@@ -1987,6 +2029,12 @@ class GameState:
     def field_id(self) -> Optional[int]:
         f = self.u32(FIELD_MGR_PTR)
         return self.u32(f + 0x20) if valid(f) else None
+
+    def map_layer(self) -> int:
+        """1 when the pause-menu map would show the cave page (worked out every frame by the hook, LAYER_AT)."""
+        if self.u32(STUB) == 0 or self.rd(LAYER_AT, 4) != struct.pack(">I", layer_code()[0]):
+            return 0
+        return 1 if self.rd(LAYER_BYTE, 1)[0] else 0
 
     def on_sunny(self) -> Optional[bool]:
         """True on the Thousand Sunny, False on an island, None if the field can't be read."""

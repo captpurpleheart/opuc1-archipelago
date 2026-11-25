@@ -969,13 +969,22 @@ def line_level(mode: int, k: int) -> int:
     return min(30, k)
 
 
+def rod_byte(upgrades: int) -> int:
+    """The in-game rod level byte after this many rod upgrades (30 / 6 modes; game_state.rod_level_byte): the grade
+    boundaries are skipped, so 10 upgrades = 11 = Whopper, 20 upgrades = 22 = Sea King."""
+    n = max(0, min(30, upgrades))
+    return n if n < 10 else n + 1 if n < 20 else n + 2
+
+
 def rod_items_needed(mode: int, level: int) -> int:
-    """Rod Level items needed to reach a rod level (0-30): 4 mode = Fishing Rod max (10) -> Whopper (11)
-    -> Sea King (22) -> MAX."""
+    """Rod Level items needed to reach a rod level byte (0-32: 11 = Whopper, 22 = Sea King; a level below 10 = that
+    many upgrades = in-game rod Lv level + 1). 4 mode: Fishing Rod max (10) -> Whopper (11) -> Sea King (22) -> MAX.
+    1.0.8: the 30 / 6 modes compare the byte too (before, rod level 11 / 22 asked for 11 / 22 upgrades although the
+    Whopper / Sea King rod comes at 10 / 20)."""
     if mode == 4:
         return next(k for k, b in enumerate([0] + ROD_GRADE_BYTES_4) if b >= level)
     k = 0
-    while rod_level_from_items(mode, k) < level:
+    while k < 30 and rod_byte(rod_level_from_items(mode, k)) < level:
         k += 1
     return k
 

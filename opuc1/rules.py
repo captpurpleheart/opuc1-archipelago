@@ -141,7 +141,7 @@ def fire_attack(s: CollectionState, p: int) -> bool:
     """Fire attacks melt Ice Rocks (but give no Ice Shards): Sanji's Diable Jambe or Zoro's Single Sword Flying Dragon
     Blaze (user, 2026-11-03), or Flame Powder / Flamethrowers (Fire Hercules on the Cave Isle; user, 0.27.0)."""
     return (s.has_all(("Sanji", "Sanji - Diable Jambe"), p)
-            or s.has_all(("Zoro", "Zoro - Single Sword Flying Dragon Blaze"), p)
+            or s.has_all(("Roronoa Zoro", "Zoro - Single Sword Flying Dragon Blaze"), p)
             or has_material("Flame Powder")(s, p) or craftable("workshop", 25)(s, p))
 
 
@@ -149,7 +149,7 @@ def fire_craft(s: CollectionState, p: int) -> bool:
     """A fire attack that doesn't rely on dropped Flame Powder: the fire moves, or Flame Powder / Flamethrowers that
     can be crafted (Chopper's Pharmacy / Usopp's Workshop)."""
     return (s.has_all(("Sanji", "Sanji - Diable Jambe"), p)
-            or s.has_all(("Zoro", "Zoro - Single Sword Flying Dragon Blaze"), p)
+            or s.has_all(("Roronoa Zoro", "Zoro - Single Sword Flying Dragon Blaze"), p)
             or craftable("pharmacy", 31)(s, p) or craftable("workshop", 25)(s, p))
 
 
@@ -258,7 +258,8 @@ SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     "Magnetic Stone": [(P2R, always), (WHIDDEN, always)],     # enemy drops (Hidden Beach: Robots)
     "Spider Web": [(SUNNY, always)],
     "Lens": [(P2, always)],                # eyeball plant drop
-    "Mystery Mushroom": [(G1, always), (C1, always)],    # Zombie drop; Cave Isle Part 1 (user)
+    # Zombie drop; Cave Isle Part 1 (user); Tempest Mice caught with the net by Rampaging Chopper drop it (user, 1.0.9)
+    "Mystery Mushroom": [(G1, always), (C1, always), (IOBST2, net)],
     "Mysterious Bone": [(G1, always)],     # Skull Idol drop
     "Sticky Sap": [(G1, net)],             # Hercules Beetle drop (net needed, user 2026-10-23)
     "Red Fruit": [(G1, always)],
@@ -304,7 +305,8 @@ SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     "Shining Saury": [(P1, _all(rod, cast(1))), (SUNNY, _all(rod, cast(1))), (WHIDDEN, _all(rod, cast(1)))],
     "Forked-Tail Killifish": [(P2, rod), (GLADDER, rod)],
     "Fist Crayfish": [(P2, rod), (GLADDER, rod)],
-    "Balloon Catfish": [(P2, _all(rod, rod_level(5)))],   # not landable at rod level 1 (user)
+    # not landable at rod level 1; in-game rod Lv 5 = 4 upgrades (user; 1.0.8: was 5 upgrades)
+    "Balloon Catfish": [(P2, _all(rod, rod_level(4)))],
     "Salamandrake": [(GLADDER, _all(rod, cast(5)))],      # bites at 30-45 m
     "Oriental Butterflyfish": [(GPOISON, rod), (CPOISON, rod)],
     "Clawed Shrimp": [(GPOISON, rod), (CPOISON, rod)],
@@ -316,8 +318,9 @@ SOURCES: Dict[str, List[Tuple[str, Rule]]] = {
     "Treasure Shell": [(WHIDDEN, _all(rod, cast(5)))],
     "Adventure Fish": [(GPOISON, rod), (I1, rod)],
     "Ice Sunfish": [(I1, _all(rod, cast(5)))],            # 30 m+ (Iceberg spot 13995, Part 1)
-    # 40 m+; user (0.24.0): rod level 5 and line 11 to land it
-    "Elephant Tuna": [(I1, _all(rod, rod_level(5), line(11)))],
+    # 40 m+; user (0.24.0): in-game rod Lv 5 and line Lv 11 to land it = 4 rod / 10 line upgrades (1.0.8: the logic
+    # counted them as upgrades, one too many each; the levels start at 1)
+    "Elephant Tuna": [(I1, _all(rod, rod_level(4), line(10)))],
     "Skull Knight": [(GPOISON, _all(rod, cast(5)))],      # 30 m+
     # Sharks break free from the standard rod: Whopper Fishing Rod (rod level 11) needed (user, 0.24.0)
     "Shark": [(SUNNY, _all(rod, line(5), rod_level(11))), (WHIDDEN, _all(rod, line(5), rod_level(11)))],
@@ -444,7 +447,7 @@ def recipe(room: str, row: int, mats, keys=()) -> Rule:
 
 # Ingredients that only count when they can be crafted when a lot of them is asked for (Bombs: 10-50; dropped ones
 # are too much farming; user, 0.33.2 / 0.33.3)
-CRAFT_ONLY = {"Bombs"}
+CRAFT_ONLY = {"Bombs", "Flame Powder"}   # Flame Powder: Fire Hercules drops don't count for recipes (user, 1.0.10)
 
 
 def ingredient(name: str) -> Rule:
@@ -538,8 +541,27 @@ RECIPE_NEEDS: Dict[Tuple[str, int], Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
 
 # Franky's fixed trades are another source of their result (0.30.0; the Mole trade too since 0.30.1: user-tested, a
 # crafted Mole works and doesn't count as caught)
+FRANKY_TRADE_SOURCES: Dict[str, Tuple[str, Rule]] = {}
 for _row, (_res, _ing) in FRANKY_TRADES.items():
-    SOURCES[_res].append((SUNNY, franky_trade(_row)))
+    FRANKY_TRADE_SOURCES[_res] = (SUNNY, franky_trade(_row))
+    SOURCES[_res].append(FRANKY_TRADE_SOURCES[_res])
+
+
+def caught(name: str) -> Rule:
+    """A "Creatures - <name>" location: like has_material, but a Franky's Supplies trade doesn't count (a traded Mole
+    isn't counted as caught; user 1.0.5: the Mole is catch only)."""
+    trade = FRANKY_TRADE_SOURCES.get(name)
+    if trade is None:
+        return has_material(name)
+    sources = [src for src in SOURCES.get(name, []) if src is not trade]
+    rec = CRAFTED.get(name)
+    rec = None if rec is not None and rec[0] == "franky" else rec
+
+    def r(s: CollectionState, p: int) -> bool:
+        if any(s.can_reach_region(reg, p) and extra(s, p) for reg, extra in sources):
+            return True
+        return bool(rec) and rec in RECIPE_NEEDS and craftable(*rec)(s, p)
+    return r
 
 
 # Materialsanity only (0.30.3, user): one-time pickups that don't count as a repeatable source for recipes. Pure Iron Ore
